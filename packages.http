@@ -13,4 +13,4 @@ GET https://registry.npmjs.org/{{npmPackage}}
 
 @period=last-week
 
-https://api.npmjs.org/downloads/point/{{period}}/{{npmPackage}}
+GEt https://api.npmjs.org/downloads/point/{{period}}/{{npmPackage}}
