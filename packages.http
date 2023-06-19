@@ -13,4 +13,14 @@ GET https://registry.npmjs.org/{{npmPackage}}
 
 @period=last-week
 
-GEt https://api.npmjs.org/downloads/point/{{period}}/{{npmPackage}}
+GET https://api.npmjs.org/downloads/point/{{period}}/{{npmPackage}}
+
+@namespace=daprio
+@repository=dapr
+@tag=1.10.0
+
+### Docker Hub 
+GET https://registry.hub.docker.com/v2/repositories/{{namespace}}/{{repository}}/tags/{{tag}}
+ 
+### Docker Hub 
+GET https://registry.hub.docker.com/v2/repositories/{{namespace}}/{{repository}}
