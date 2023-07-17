@@ -22,5 +22,11 @@ GET https://api.npmjs.org/downloads/point/{{period}}/{{npmPackage}}
 ### Docker Hub 
 GET https://registry.hub.docker.com/v2/repositories/{{namespace}}/{{repository}}/tags/{{tag}}
  
-### Docker Hub 
+### Docker Hub (for bi-weekly community metrics)
 GET https://registry.hub.docker.com/v2/repositories/{{namespace}}/{{repository}}
+
+
+@ghToken=
+### GitHub Dapr image
+GET https://api.github.com/orgs/dapr/packages/container/dapr
+Authorization: Bearer {{ghToken}}
