@@ -1,3 +1,13 @@
+### Start local CollectorOrchestrator
+###
+// @name wfrequest
+@localFunctionUrl=http://localhost:7071/runtime/webhooks/durabletask/
+POST {{ localFunctionUrl }}orchestrators/CollectorOrchestrator
+
+### Get local CollectorOrchestrator
+@instanceId={{wfrequest.response.body.id}}
+GET {{ localFunctionUrl }}instances/{{ instanceId }}
+
 ### NuGet
 @nugetPackage=Dapr.Client
 GET https://azuresearch-usnc.nuget.org/query?q=PackageId:{{nugetPackage}}
@@ -26,7 +36,7 @@ GET https://registry.hub.docker.com/v2/repositories/{{namespace}}/{{repository}}
 GET https://registry.hub.docker.com/v2/repositories/{{namespace}}/{{repository}}
 
 
-@ghToken=
+ @ghToken=
 ### GitHub Dapr image
 GET https://api.github.com/orgs/dapr/packages/container/dapr
-Authorization: Bearer {{ghToken}}
+Authorization: Bearer {{ghToken}} 

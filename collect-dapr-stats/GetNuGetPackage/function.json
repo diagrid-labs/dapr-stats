@@ -1,0 +1,10 @@
+{
+  "bindings": [
+    {
+      "name": "packageName",
+      "type": "activityTrigger",
+      "direction": "in"
+    }
+  ],
+  "scriptFile": "../dist/GetNuGetPackage/index.js"
+}
