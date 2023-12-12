@@ -14,7 +14,8 @@ GET https://azuresearch-usnc.nuget.org/query?q=PackageId:{{nugetPackage}}
 
 ### NPM
 ## https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md
-@npmPackage=@dapr/dapr
+## use url encoded form of @dapr/dapr
+@npmPackage=@dapr%2Fdapr
 
 GET https://registry.npmjs.org/{{npmPackage}}
 
@@ -24,6 +25,9 @@ GET https://registry.npmjs.org/{{npmPackage}}
 @period=last-week
 
 GET https://api.npmjs.org/downloads/point/{{period}}/{{npmPackage}}
+
+### Get version downloads
+GET https://api.npmjs.org/versions/{{npmPackage}}/{{period}}
 
 @namespace=daprio
 @repository=dapr
