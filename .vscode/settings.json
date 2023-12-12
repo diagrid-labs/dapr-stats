@@ -1,8 +1,9 @@
 {
-    "azureFunctions.deploySubpath": "collect-dapr-stats",
+    "azureFunctions.deploySubpath": "CollectDaprStats/bin/Release/net8.0/publish",
     "azureFunctions.postDeployTask": "npm install (functions)",
-    "azureFunctions.projectLanguage": "TypeScript",
-    "azureFunctions.projectRuntime": "~3",
+    "azureFunctions.projectLanguage": "C#",
+    "azureFunctions.projectRuntime": "~4",
     "debug.internalConsoleOptions": "neverOpen",
-    "azureFunctions.preDeployTask": "npm prune (functions)"
+    "azureFunctions.preDeployTask": "publish (functions)",
+    "azureFunctions.templateFilter": "All"
 }
