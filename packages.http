@@ -33,6 +33,14 @@ GET https://api.npmjs.org/versions/{{npmPackage}}/{{period}}
 @repository=dapr
 @tag=1.10.0
 
+### ---
+### Discord
+@apiVersion=10
+GET https://discord.com/api/v{{apiVersion}}/guilds/{{discordServerId}}?with_counts=true
+User-Agent: DiscordBot (https://discord.com/api/, {{apiVersion}})
+Authorization: Bot {{discordToken}}
+
+### ---
 ### Docker Hub 
 GET https://registry.hub.docker.com/v2/repositories/{{namespace}}/{{repository}}/tags/{{tag}}
  

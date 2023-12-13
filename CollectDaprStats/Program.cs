@@ -1,6 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Discord.Rest;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -8,6 +9,7 @@ var host = new HostBuilder()
         services.AddApplicationInsightsTelemetryWorkerService();
         services.ConfigureFunctionsApplicationInsights();
         services.AddHttpClient();
+        services.AddSingleton<DiscordRestClient>();
     })
     .Build();
 

@@ -15,8 +15,11 @@ namespace Dapr
         {
             ILogger logger = context.CreateReplaySafeLogger(nameof(CollectorOrchestrator));
             
-            // Replace name and input with values relevant for your Durable Functions Activity
-            await context.CallActivityAsync<IEnumerable<NuGetPackageVersionData>>(nameof(GetNuGetPackageData), "Dapr.Client");
+            await context.CallActivityAsync<IEnumerable<NuGetPackageVersionData>>(
+                nameof(GetNuGetPackageData),
+                "Dapr.Client");
+            await context.CallActivityAsync<DiscordData>(
+                nameof(GetDiscordData));
         }
 
 
