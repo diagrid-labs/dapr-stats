@@ -1,7 +1,6 @@
-using CollectDaprStats;
 using Dapr.Workflow;
 
-namespace Dapr
+namespace DaprStats
 {
     public class CollectorWorkflow : Workflow<DateTime, bool>
     {
@@ -9,14 +8,15 @@ namespace Dapr
             WorkflowContext context,
             DateTime collectionDate)
         {
-            await context.CallActivityAsync<IEnumerable<NuGetPackageVersionData>>(
+            await context.CallActivityAsync<bool>(
                 nameof(GetNuGetPackageData),
                 "Dapr.Client");
-            // await context.CallActivityAsync<IEnumerable<NpmPackageVersionData>>(
-            //     nameof(GetNpmPackageData),
-            //     "@dapr/dapr");
-            // await context.CallActivityAsync<DiscordData>(
-            //     nameof(GetDiscordData));
+            await context.CallActivityAsync<bool>(
+                nameof(GetNpmPackageData),
+                "@dapr/dapr");
+            await context.CallActivityAsync<bool>(
+                nameof(GetDiscordData),
+                string.Empty);
 
             return true;
         }

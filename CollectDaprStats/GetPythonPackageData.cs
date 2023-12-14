@@ -5,11 +5,11 @@ using Dapr.Workflow;
 
 namespace DaprStats
 {
-    public class GetNuGetPackageData : WorkflowActivity<string, bool>
+    public class GetPythonPackageData : WorkflowActivity<string, bool>
     {
         private readonly PostgresOutput _output;
 
-        public GetNuGetPackageData(PostgresOutput output)
+        public GetPythonPackageData(PostgresOutput output)
         {
             _output = output;
         }
@@ -52,7 +52,7 @@ namespace DaprStats
         }
     }
 
-    public class NuGetPackageVersionData
+    public class PythonPackageVersionData
     {
         public string PackageName { get; set; }
         public string PackageVersion { get; set; }

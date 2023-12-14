@@ -4,5 +4,20 @@ CREATE TABLE nuget_dapr_client (
     collection_date TIMESTAMP NOT NULL,
     package_version VARCHAR(50) NOT NULL,
     download_count BIGINT NOT NULL,
-    number_of_weeks SMALLINT
+    collected_over_number_of_weeks SMALLINT
+);
+
+CREATE TABLE npm_dapr_dapr (
+    id SERIAL PRIMARY KEY,
+    package_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    package_version VARCHAR(50) NOT NULL,
+    download_count BIGINT NOT NULL,
+    collected_over_number_of_weeks SMALLINT
+);
+
+CREATE TABLE discord_dapr (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    member_count INT NOT NULL
 );

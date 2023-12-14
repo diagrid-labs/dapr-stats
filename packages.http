@@ -24,6 +24,10 @@ GET https://api.npmjs.org/versions/{{npmPackage}}/{{period}}
 @tag=1.10.0
 
 ### ---
+## PyPi Stats
+GET https://pypistats.org/api/packages/dapr/recent
+
+### ---
 ### Discord
 @apiVersion=10
 GET https://discord.com/api/v{{apiVersion}}/guilds/{{discordServerId}}?with_counts=true

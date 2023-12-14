@@ -1,22 +1,23 @@
 
 using Discord.Rest;
-using Dapr;
-using CollectDaprStats;
 using Dapr.Workflow;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Dapr.Client;
+using DaprStats;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<DiscordRestClient>();
+builder.Services.AddSingleton(_ => new DaprClientBuilder().Build());
+builder.Services.AddSingleton<PostgresOutput>();
 builder.Services.AddDaprWorkflow(options =>
 {
     options.RegisterWorkflow<CollectorWorkflow>();
-
     options.RegisterActivity<GetNuGetPackageData>();
-    // options.RegisterActivity<GetNpmPackageData>();
-    // options.RegisterActivity<GetDiscordData>();
+    options.RegisterActivity<GetNpmPackageData>();
+    options.RegisterActivity<GetDiscordData>();
 });
 
 // Dapr uses a random port for gRPC by default. If we don't know what that port
