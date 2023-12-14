@@ -15,6 +15,9 @@ namespace DaprStats
                 nameof(GetNpmPackageData),
                 "@dapr/dapr");
             await context.CallActivityAsync<bool>(
+                nameof(GetPythonPackageData),
+                "dapr");
+            await context.CallActivityAsync<bool>(
                 nameof(GetDiscordData),
                 string.Empty);
 

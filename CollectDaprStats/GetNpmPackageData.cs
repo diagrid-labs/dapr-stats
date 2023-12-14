@@ -34,37 +34,37 @@ namespace DaprStats
                         PackageName = npmPackageVersionResponse.Package,
                         PackageVersion = versionPair.Key,
                         Downloads = versionPair.Value,
-                        CollectedOverNumberOfWeeks = 1
+                        CollectedOverNumberOfDays = 7
                     };
-                    
+
+                    Console.WriteLine($"Package: {npmPackageVersionData.PackageName}, Version: {npmPackageVersionData.PackageVersion}, Downloads: {npmPackageVersionData.Downloads}");
+
                     const string tableName = "npm_dapr_dapr";
-                    var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_weeks) values ($1, $2, $3, $4, $5)";
-                    var sqlParameters = new object[] { npmPackageVersionData.PackageName, npmPackageVersionData.CollectionDate, npmPackageVersionData.PackageVersion, npmPackageVersionData.Downloads, npmPackageVersionData.CollectedOverNumberOfWeeks};
+                    var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5)";
+                    var sqlParameters = new object[] { npmPackageVersionData.PackageName, npmPackageVersionData.CollectionDate, npmPackageVersionData.PackageVersion, npmPackageVersionData.Downloads, npmPackageVersionData.CollectedOverNumberOfDays };
 
                     await _output.InsertAsync(sqlText, sqlParameters);
                 }
 
                 return true;
             }
-            else
-            {
-                return false;
-            }
+
+            return false;
         }
     }
+}
 
-    public class NpmPackageVersionResponse
-    {
-        public string Package { get; set; }
-        public Dictionary<string, int> Downloads { get; set; }
-    }
+public class NpmPackageVersionResponse
+{
+    public string Package { get; set; }
+    public Dictionary<string, int> Downloads { get; set; }
+}
 
-    public class NpmPackageVersionData
-    {
-        public string PackageName { get; set; }
-        public string PackageVersion { get; set; }
-        public long? Downloads { get; set; }
-        public DateTime CollectionDate { get ; set; }
-        public short CollectedOverNumberOfWeeks { get; set; }
-    }
+public class NpmPackageVersionData
+{
+    public string PackageName { get; set; }
+    public string PackageVersion { get; set; }
+    public long? Downloads { get; set; }
+    public DateTime CollectionDate { get; set; }
+    public decimal CollectedOverNumberOfDays { get; set; }
 }

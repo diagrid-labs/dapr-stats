@@ -17,6 +17,7 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterWorkflow<CollectorWorkflow>();
     options.RegisterActivity<GetNuGetPackageData>();
     options.RegisterActivity<GetNpmPackageData>();
+    options.RegisterActivity<GetPythonPackageData>();
     options.RegisterActivity<GetDiscordData>();
 });
 

@@ -1,63 +1,66 @@
-using NuGet.Common;
-using NuGet.Protocol;
-using NuGet.Protocol.Core.Types;
 using Dapr.Workflow;
+using System.Net;
+using System.Net.Http.Json;
 
 namespace DaprStats
 {
     public class GetPythonPackageData : WorkflowActivity<string, bool>
     {
         private readonly PostgresOutput _output;
+        private readonly HttpClient _httpClient;
 
-        public GetPythonPackageData(PostgresOutput output)
+        public GetPythonPackageData(IHttpClientFactory httpClientFactory, PostgresOutput output)
         {
+            _httpClient = httpClientFactory.CreateClient();
             _output = output;
         }
 
         public override async Task<bool> RunAsync(WorkflowActivityContext context, string packageName)
         {
-            var repository = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
-            var resource = await repository.GetResourceAsync<PackageSearchResource>();
-            
-            var searchResult = await resource.SearchAsync(
-                packageName,
-                new SearchFilter(false),
-                0,
-                1,
-                NullLogger.Instance,
-                CancellationToken.None);
-            var daprClientPackage = searchResult.FirstOrDefault();
-            var daprClientVersions = await daprClientPackage.GetVersionsAsync();
-
-            foreach (var version in daprClientVersions)
+            _httpClient.BaseAddress = new Uri("https://pypistats.org/");
+            packageName = WebUtility.UrlEncode(packageName);
+            var response = await _httpClient.GetAsync($"api/packages/{packageName}/recent");
+            if (response.IsSuccessStatusCode)
             {
-                var nugetPackageVersionData = new NuGetPackageVersionData
+                var pypiPackageVersionResponse = await response.Content.ReadFromJsonAsync<PyPiPackageVersionResponse>();
+
+                Console.WriteLine($"Package: {pypiPackageVersionResponse.Package}, Downloads: {pypiPackageVersionResponse.Data["last_week"]}");
+
+                var pythonPackageData = new PythonPackageData
                 {
                     CollectionDate = DateTime.UtcNow,
-                    PackageName = daprClientPackage.Identity.Id,
-                    PackageVersion = version.Version.ToFullString(),
-                    Downloads = version.DownloadCount,
-                    CollectedOverNumberOfWeeks = 6
+                    PackageName = pypiPackageVersionResponse.Package,
+                    PackageVersion = "all",
+                    Downloads = pypiPackageVersionResponse.Data["last_week"],
+                    CollectedOverNumberOfDays = 7
                 };
-                Console.WriteLine($"Package: {nugetPackageVersionData.PackageName}, Version: {nugetPackageVersionData.PackageVersion}, Downloads: {nugetPackageVersionData.Downloads}");
-                
-                const string tableName = "nuget_dapr_client";
-                var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_weeks) values ($1, $2, $3, $4, $5)";
-                var sqlParameters = new object[] { nugetPackageVersionData.PackageName, nugetPackageVersionData.CollectionDate, nugetPackageVersionData.PackageVersion, nugetPackageVersionData.Downloads, nugetPackageVersionData.CollectedOverNumberOfWeeks};
-                
+
+                const string tableName = "python_dapr";
+                var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5)";
+                var sqlParameters = new object[] { pythonPackageData.PackageName, pythonPackageData.CollectionDate, pythonPackageData.PackageVersion, pythonPackageData.Downloads, pythonPackageData.CollectedOverNumberOfDays };
+
                 await _output.InsertAsync(sqlText, sqlParameters);
+
+                return true;
             }
 
-            return true;
+            return false;
         }
     }
 
-    public class PythonPackageVersionData
+    public class PyPiPackageVersionResponse
+    {
+        public string Package { get; set; }
+        public Dictionary<string, int> Data { get; set; }
+    }
+
+    public class PythonPackageData
     {
         public string PackageName { get; set; }
         public string PackageVersion { get; set; }
         public long? Downloads { get; set; }
-        public DateTime CollectionDate { get ; set; }
-        public short CollectedOverNumberOfWeeks { get; set; }
+        public DateTime CollectionDate { get; set; }
+        public decimal CollectedOverNumberOfDays { get; set; }
     }
+
 }
