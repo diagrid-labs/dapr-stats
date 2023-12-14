@@ -1,0 +1,12 @@
+version: 1
+common:
+  resourcesPath: resources
+apps:
+  - appID: collect-dapr-stats
+    appDirPath: CollectDaprStats
+    appPort: 5065
+    daprHTTPPort: 3500
+    command: ["dotnet", "run"]
+    appLogDestination: console
+    daprdLogDestination: console
+    logLevel: debug

@@ -1,0 +1,16 @@
+@dapr_url=http://localhost:3500
+@workflow_id={{$guid}}
+@currentDate={{$datetime iso8601}}
+###
+### Start the CollectorWorkflow
+###
+// @name wfrequest
+POST {{dapr_url}}/v1.0-beta1/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/text/plain
+
+"{{currentDate}}"
+
+
+### Get the status of the workflow
+@wfresponse={{wfrequest.response.body.instanceID}}
+GET {{dapr_url}}/v1.0-beta1/workflows/dapr/{{wfresponse}}

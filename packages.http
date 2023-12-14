@@ -1,13 +1,3 @@
-### Start local CollectorOrchestrator
-###
-// @name wfrequest
-@localFunctionUrl=http://localhost:7071/runtime/webhooks/durabletask/
-POST {{ localFunctionUrl }}orchestrators/CollectorOrchestrator
-
-### Get local CollectorOrchestrator
-@instanceId={{wfrequest.response.body.id}}
-GET {{ localFunctionUrl }}instances/{{ instanceId }}
-
 ### NuGet
 @nugetPackage=Dapr.Client
 GET https://azuresearch-usnc.nuget.org/query?q=PackageId:{{nugetPackage}}

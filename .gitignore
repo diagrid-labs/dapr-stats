@@ -3,3 +3,7 @@
 __blobstorage__
 __queuestorage__
 __azurite*
+
+# Local secrets
+
+secrets.json

@@ -1,21 +1,23 @@
-using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.Logging;
 using NuGet.Common;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
-using Azure.Data.Tables;
-using Azure;
+using Dapr.Workflow;
+using Dapr.Client;
+using System.Text.Json;
 
 namespace CollectDaprStats
 {
-    public class GetNuGetPackageData
+    public class GetNuGetPackageData : WorkflowActivity<string, bool>
     {
-        [Function(nameof(GetNuGetPackageData))]
-        [TableOutput("NuGetDaprClient", Connection = "AzureWebJobsStorage")]
-        public async Task<IEnumerable<NuGetPackageVersionData>> Run(
-            [ActivityTrigger] string packageName, FunctionContext executionContext)
+        private readonly DaprClient _daprClient;
+
+        public GetNuGetPackageData(DaprClient client)
         {
-            var logger = executionContext.GetLogger(nameof(GetNuGetPackageData));
+            _daprClient = client;
+        }
+
+        public override async Task<bool> RunAsync(WorkflowActivityContext context, string packageName)
+        {
             var repository = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
             var resource = await repository.GetResourceAsync<PackageSearchResource>();
             
@@ -27,46 +29,60 @@ namespace CollectDaprStats
                 NullLogger.Instance,
                 CancellationToken.None);
             var daprClientPackage = searchResult.FirstOrDefault();
-            if (daprClientPackage == null)
-            {
-                logger.LogError($"Could not find package {packageName}");
-            }
             var daprClientVersions = await daprClientPackage.GetVersionsAsync();
 
             var nugetPackageVersionDataList = new List<NuGetPackageVersionData>();
+
             foreach (var version in daprClientVersions)
             {
                 var nugetPackageVersionData = new NuGetPackageVersionData
                 {
-                    DayOfYear = DateTime.UtcNow.DayOfYear,
+                    CollectionDate = DateTime.UtcNow,
                     PackageName = daprClientPackage.Identity.Id,
-                    VersionString = version.Version.ToFullString(),
+                    PackageVersion = version.Version.ToFullString(),
                     Downloads = version.DownloadCount,
-                    PartitionKey = DateTime.UtcNow.DayOfYear.ToString(),
-                    RowKey = $"{daprClientPackage.Identity.Id}-{version.Version.ToFullString()}"
+                    NumberOfWeeks = 6
                 };
+                Console.WriteLine($"Package: {nugetPackageVersionData.PackageName}, Version: {nugetPackageVersionData.PackageVersion}, Downloads: {nugetPackageVersionData.Downloads}");
                 nugetPackageVersionDataList.Add(nugetPackageVersionData);
-                logger.LogInformation(nugetPackageVersionData.ToString());
+                
+                const string tableName = "nuget_dapr_client";
+                var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, number_of_weeks) values ($1, $2, $3, $4, $5)";
+                var parameters = new object[] { nugetPackageVersionData.PackageName, nugetPackageVersionData.CollectionDate, nugetPackageVersionData.PackageVersion, nugetPackageVersionData.Downloads, nugetPackageVersionData.NumberOfWeeks};
+                var paramsText = JsonSerializer.Serialize(parameters);
+
+                var metadata = new Dictionary<string, string>
+                {
+                    {"sql", sqlText},
+                    {"params", paramsText}
+                };
+                
+                const string bindingName = "daprstats";
+                const string operation = "exec";
+                const string data = "";
+                try
+                {
+                    await _daprClient.InvokeBindingAsync(bindingName, operation, data, metadata);
+                }
+                catch (System.Exception ex)
+                {
+                    Console.WriteLine(ex.InnerException);
+                    Console.WriteLine(ex.InnerException.Message);
+                    throw;
+                }
+                
             }
 
-            return nugetPackageVersionDataList;
+            return true;
         }
     }
 
-    public class NuGetPackageVersionData : ITableEntity
+    public class NuGetPackageVersionData
     {
-        public int DayOfYear { get; set; }
         public string PackageName { get; set; }
-        public string? VersionString { get; set; }
+        public string PackageVersion { get; set; }
         public long? Downloads { get; set; }
-        public string PartitionKey { get; set; }
-        public string RowKey { get; set; }
-        public DateTimeOffset? Timestamp { get ; set; }
-        public ETag ETag { get; set; }
-
-        public override string ToString()
-        {
-            return $"{PackageName} {VersionString} {Downloads}";
-        }
+        public DateTime CollectionDate { get ; set; }
+        public short NumberOfWeeks { get; set; }
     }
 }
