@@ -4,6 +4,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.RegularExpressions;
 
 namespace CollectDaprStats
 {
@@ -39,7 +40,7 @@ namespace CollectDaprStats
                         VersionString = versionPair.Key,
                         Downloads = versionPair.Value,
                         PartitionKey = DateTime.UtcNow.DayOfYear.ToString(),
-                        RowKey = $"{npmPackageVersionResponse.Package}-{versionPair.Key}"
+                        RowKey = CleanPartitionKey($"{npmPackageVersionResponse.Package}-{versionPair.Key}")
                     };
                     npmPackageVersionDataList.Add(npmPackageVersionData);
                     logger.LogInformation(npmPackageVersionData.ToString());
@@ -51,6 +52,12 @@ namespace CollectDaprStats
             }
 
             return npmPackageVersionDataList;
+        }
+
+        private static string CleanPartitionKey(string partitionKey)
+        {
+            // use a regular expression to replace a slash or a backslash with a dash
+            return Regex.Replace(partitionKey, @"[\/\\]", "-");
         }
     }
 

@@ -18,10 +18,12 @@ namespace Dapr
             await context.CallActivityAsync<IEnumerable<NuGetPackageVersionData>>(
                 nameof(GetNuGetPackageData),
                 "Dapr.Client");
+            await context.CallActivityAsync<IEnumerable<NpmPackageVersionData>>(
+                nameof(GetNpmPackageData),
+                "@dapr/dapr");
             await context.CallActivityAsync<DiscordData>(
                 nameof(GetDiscordData));
         }
-
 
         [Function("DurableFunctionsOrchestrationCSharp1_HttpStart")]
         public static async Task<HttpResponseData> HttpStart(
