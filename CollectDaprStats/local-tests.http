@@ -6,10 +6,16 @@
 ###
 // @name wfrequest
 POST {{dapr_url}}/v1.0-beta1/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
-Content-Type: application/text/plain
+Content-Type: application/json
 
-"{{currentDate}}"
-
+{
+    "CollectionDate" : "{{currentDate}}",
+    "CollectNuGetData" : false,
+    "CollectNpmData" : false,
+    "CollectPythonData" : false,
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : true
+}
 
 ### Get the status of the workflow
 @wfresponse={{wfrequest.response.body.instanceID}}

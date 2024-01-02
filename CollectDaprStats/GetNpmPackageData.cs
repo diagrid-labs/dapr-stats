@@ -19,7 +19,6 @@ namespace DaprStats
             WorkflowActivityContext context,
             string packageName)
         {
-
             _httpClient.BaseAddress = new Uri("https://api.npmjs.org/");
             packageName = WebUtility.UrlEncode(packageName);
             var response = await _httpClient.GetAsync($"versions/{packageName}/last-week");

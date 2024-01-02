@@ -30,3 +30,18 @@ CREATE TABLE discord_dapr (
     collection_date TIMESTAMP NOT NULL,
     member_count INT NOT NULL
 );
+
+CREATE TABLE github_dapr (
+    id SERIAL PRIMARY KEY,
+    repo_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    fork_count_total INT NOT NULL,
+    star_count_total INT NOT NULL,
+    commit_count INT NOT NULL,
+    commit_users TEXT,
+    issue_count INT NOT NULL,
+    issue_users TEXT,
+    pullrequest_count INT NOT NULL,
+    pullrequest_users TEXT,
+    collected_over_number_of_days SMALLINT
+);
