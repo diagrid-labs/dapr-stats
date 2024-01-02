@@ -27,7 +27,7 @@ namespace DaprStats
             var commitList = await _gitHubClient.Repository.Commit.GetAll(repository.Id, commitRequest, apiOptions);
             var commitCountOverPeriod = commitList.Count;
             var commitShas = string.Join(',', commitList.Select(commit => commit.Sha));
-            var commitUserNames = string.Join(',', commitList.Select(commit => commit.User.Name).Distinct());
+            var commitUserNames = string.Join(',', commitList.Select(commit => commit.Author.Login).Distinct());
             Console.WriteLine($"Repo: {repository.Name}, Commits: {commitCountOverPeriod}, Shas: {commitShas}, Users: {commitUserNames}");
 
             var issueRequest = new RepositoryIssueRequest {
@@ -38,7 +38,7 @@ namespace DaprStats
             var issueList = await _gitHubClient.Issue.GetAllForRepository(repository.Id, issueRequest, apiOptions);
             var issueCountOverPeriod = issueList.Count;
             var issueNumbers = string.Join(',', issueList.Select(issue => issue.Number));
-            var issueUserNames = string.Join(',', issueList.Select(issue => issue.User.Name).Distinct());
+            var issueUserNames = string.Join(',', issueList.Select(issue => issue.User.Login).Distinct());
 
             Console.WriteLine($"Repo: {repository.Name}, Issues: {issueCountOverPeriod}, Numbers: {issueNumbers}, Users: {issueUserNames}");
 
@@ -51,7 +51,7 @@ namespace DaprStats
                 pr.MergedAt > input.CollectionDate.AddDays(-CollectionPeriodInDays) ||
                 pr.ClosedAt > input.CollectionDate.AddDays(-CollectionPeriodInDays));
             var filteredPrList = prList.Where(prFilter);
-            var filteredPrUserNames = string.Join(',', filteredPrList.Select(pr => pr.User.Name).Distinct());
+            var filteredPrUserNames = string.Join(',', filteredPrList.Select(pr => pr.User.Login).Distinct());
             var filteredPrCountOverPeriod = filteredPrList.Count();
             var filteredPrNumbers = string.Join(',', filteredPrList.Select(pr => pr.Number));
 
