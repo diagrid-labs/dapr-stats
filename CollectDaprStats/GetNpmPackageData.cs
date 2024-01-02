@@ -66,5 +66,5 @@ public class NpmPackageVersionData
     public string PackageVersion { get; set; }
     public long? Downloads { get; set; }
     public DateTime CollectionDate { get; set; }
-    public decimal CollectedOverNumberOfDays { get; set; }
+    public int CollectedOverNumberOfDays { get; set; }
 }

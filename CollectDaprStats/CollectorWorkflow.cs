@@ -8,18 +8,26 @@ namespace DaprStats
             WorkflowContext context,
             DateTime collectionDate)
         {
-            await context.CallActivityAsync<bool>(
+            await context.CallActivityAsync(
                 nameof(GetNuGetPackageData),
                 "Dapr.Client");
-            await context.CallActivityAsync<bool>(
+            await context.CallActivityAsync(
                 nameof(GetNpmPackageData),
                 "@dapr/dapr");
-            await context.CallActivityAsync<bool>(
+            await context.CallActivityAsync(
                 nameof(GetPythonPackageData),
                 "dapr");
-            await context.CallActivityAsync<bool>(
+            await context.CallActivityAsync(
                 nameof(GetDiscordData),
                 string.Empty);
+            var repositories = new[] {
+                "dapr",
+                "docs" };
+            await context.CallChildWorkflowAsync(
+                nameof(GitHubCollectorWorkflow),
+                new GitHubCollectorWorkflowInput(
+                    collectionDate,
+                    repositories));
 
             return true;
         }
