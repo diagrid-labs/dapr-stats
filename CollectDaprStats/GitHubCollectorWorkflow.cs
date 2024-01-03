@@ -13,8 +13,11 @@ namespace DaprStats
             foreach (var repository in input.Repositories)
             {
                 githubTasks.Add(context.CallActivityAsync<bool>(
-                    nameof(GetGitHubData),
-                    new GitHubDataInput(input.CollectionDate, repository)
+                    nameof(GetGitHubRepoData),
+                    new GitHubDataInput(
+                        input.CollectionDate,
+                        input.Organization,
+                        repository)
                 ));
             }
 
@@ -24,5 +27,8 @@ namespace DaprStats
         }
     }
 
-    public record GitHubCollectorWorkflowInput(DateTime CollectionDate, string[] Repositories);
+    public record GitHubCollectorWorkflowInput(
+        DateTime CollectionDate,
+        string Organization,
+        string[] Repositories);
 }

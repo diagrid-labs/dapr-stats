@@ -41,7 +41,10 @@ CREATE TABLE github_dapr (
     commit_users TEXT,
     issue_count INT NOT NULL,
     issue_users TEXT,
+    comment_count INT NOT NULL, 
+    comment_users TEXT,
     pullrequest_count INT NOT NULL,
     pullrequest_users TEXT,
+    distinct_user_count INT NOT NULL,
     collected_over_number_of_days SMALLINT
 );

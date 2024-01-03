@@ -5,15 +5,24 @@ using Dapr.Client;
 using DaprStats;
 using Octokit;
 
-var builder = WebApplication.CreateBuilder(args);
+var daprClient = new DaprClientBuilder().Build();
+const string secretStore = "secretstore";
+const string DaprStatsGitHubPATKey = "DaprStatsGitHubPAT";
+var ghPATDictionary = await daprClient.GetSecretAsync(secretStore, DaprStatsGitHubPATKey);
 
+var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHttpClient();
-builder.Services.AddSingleton<IGitHubClient>(
-    new GitHubClient(
-        new ProductHeaderValue("dapr-stats")
-    ));
+builder.Services.AddSingleton<IGitHubClient>(_ => {
+    var ghClient = new GitHubClient(new ProductHeaderValue("dapr-stats"))
+    { 
+        Credentials = new Credentials(ghPATDictionary[DaprStatsGitHubPATKey], AuthenticationType.Bearer) 
+
+    };
+    return ghClient;
+});
+
 builder.Services.AddSingleton<DiscordRestClient>();
-builder.Services.AddSingleton(_ => new DaprClientBuilder().Build());
+builder.Services.AddSingleton(daprClient);
 builder.Services.AddSingleton<PostgresOutput>();
 builder.Services.AddDaprWorkflow(options =>
 {
@@ -23,7 +32,8 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<GetNpmPackageData>();
     options.RegisterActivity<GetPythonPackageData>();
     options.RegisterActivity<GetDiscordData>();
-    options.RegisterActivity<GetGitHubData>();
+    options.RegisterActivity<GetGitHubRepoData>();
+    options.RegisterActivity<GetGitHubReposForOrg>();
 });
 
 // Dapr uses a random port for gRPC by default. If we don't know what that port

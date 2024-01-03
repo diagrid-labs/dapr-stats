@@ -26,12 +26,10 @@ namespace DaprStats
             const string secretStore = "secretstore";
             const string DiscordBotTokenKey = "DiscordBotToken";
             var tokenDictionary = await _daprClient.GetSecretAsync(secretStore, DiscordBotTokenKey);
-            Console.WriteLine($"DiscordBotToken: {tokenDictionary[DiscordBotTokenKey]}");
             await _discordClient.LoginAsync(TokenType.Bot, tokenDictionary[DiscordBotTokenKey]);
 
             const string DaprDiscordServerIdKey = "DaprDiscordServerId";
             var serverIdDictionary = await _daprClient.GetSecretAsync(secretStore, DaprDiscordServerIdKey);
-            Console.WriteLine($"DaprDiscordServerId: {tokenDictionary[DiscordBotTokenKey]}");
             ulong.TryParse(serverIdDictionary[DaprDiscordServerIdKey], out var DaprDiscordServerId);
             var daprServer = await _discordClient.GetGuildAsync(DaprDiscordServerId, withCounts: true);
 

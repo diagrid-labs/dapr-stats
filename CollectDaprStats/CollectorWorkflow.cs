@@ -38,14 +38,21 @@ namespace DaprStats
 
             if (input.CollectGitHubData)
             {
-                var repositories = new[] {
-                "dapr",
-                "docs" };
-                await context.CallChildWorkflowAsync(
+                const string orgName = "dapr";
+                var repositories = await context.CallActivityAsync<string[]>(
+                    nameof(GetGitHubReposForOrg),
+                    orgName);
+                Console.WriteLine($"Repository count for {orgName}: {repositories.Length}");
+
+                if (repositories.Length > 0)
+                {
+                    await context.CallChildWorkflowAsync(
                     nameof(GitHubCollectorWorkflow),
                     new GitHubCollectorWorkflowInput(
                         input.CollectionDate,
+                        orgName,
                         repositories));
+                }
             }
 
             return true;
