@@ -10,10 +10,10 @@ Content-Type: application/json
 
 {
     "CollectionDate" : "{{currentDate}}",
-    "CollectNuGetData" : false,
-    "CollectNpmData" : false,
-    "CollectPythonData" : false,
-    "CollectDiscordData" : false,
+    "CollectNuGetData" : true,
+    "CollectNpmData" : true,
+    "CollectPythonData" : true,
+    "CollectDiscordData" : true,
     "CollectGitHubData" : true
 }
 
