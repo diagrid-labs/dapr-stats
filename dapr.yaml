@@ -7,6 +7,6 @@ apps:
     appPort: 5065
     daprHTTPPort: 3500
     command: ["dotnet", "run"]
-    appLogDestination: console
-    daprdLogDestination: console
+    appLogDestination: fileAndConsole
+    daprdLogDestination: file
     logLevel: debug
