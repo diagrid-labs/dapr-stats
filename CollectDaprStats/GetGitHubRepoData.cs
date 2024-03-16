@@ -23,7 +23,7 @@ namespace DaprStats
             WorkflowActivityContext context,
             GitHubDataInput input)
         {
-            const int CollectionPeriodInDays = 14;
+            const int CollectionPeriodInDays = 15;
             var apiOptions = new ApiOptions { PageSize = 250, StartPage = 1 };
             var repository = await _gitHubClient.Repository.Get(input.Organization, input.Repository);
 

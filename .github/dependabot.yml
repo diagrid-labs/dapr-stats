@@ -4,3 +4,8 @@ updates:
     directory: "/CollectDaprStats"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/.devcontainer"
+    schedule:
+      interval: "weekly"
