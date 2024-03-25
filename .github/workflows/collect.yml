@@ -1,0 +1,35 @@
+name: Collect Stats
+
+on:
+    workflow_dispatch:
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+        - uses: dapr/setup-dapr@v1
+          id: install-dapr
+          with:
+            version: '1.13.0'
+        - name: Run dapr init
+          run: dapr init --slim
+        - name: Check dapr versions
+          run: dapr -v
+
+        - name: Checkout repository
+          uses: actions/checkout@v4
+
+        - name: Setup .NET
+          uses: actions/setup-dotnet@v1
+          with:
+            dotnet-version: '8.0.x'
+
+        - name: Restore dependencies
+          run: dotnet restore ./CollectDaprStats/CollectDaprStats.csproj
+
+        - name: Build solution
+          run: dotnet build ./CollectDaprStats/CollectDaprStats.csproj --configuration Release
+
+        - name: Run solution
+          run: dapr run -f .
