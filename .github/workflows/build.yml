@@ -35,3 +35,6 @@ jobs:
 
         - name: Build solution
           run: dotnet build ./CollectDaprStats/CollectDaprStats.csproj --configuration Release
+
+        - name: Run solution
+          run: dapr run -f .

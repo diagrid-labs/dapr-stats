@@ -6,7 +6,6 @@ spec:
   type: bindings.postgresql
   version: v1
   metadata:
-    # Connection string
     - name: connectionString
       secretKeyRef:
         name: PostgreSQLConnection
