@@ -17,7 +17,9 @@ jobs:
           id: install-dapr
           with:
             version: '1.13.0'
-        - name: test dapr
+        - name: Run dapr init
+          run: dapr init --slim
+        - name: Check dapr versions
           run: dapr -v
 
         - name: Checkout repository
