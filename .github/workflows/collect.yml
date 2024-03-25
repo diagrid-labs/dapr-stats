@@ -1,7 +1,10 @@
 name: Collect Stats
 
 on:
-    workflow_dispatch:
+  schedule:
+    # At 20:00 on day-of-month 1 and 16.
+    - cron:  '0 20 1,16 * *'
+  workflow_dispatch:
 
 jobs:
     build:
