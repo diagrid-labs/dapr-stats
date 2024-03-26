@@ -9,7 +9,7 @@ spec:
     - name: connectionString
       secretKeyRef:
         name: PostgreSQLConnection
-        key: PostgreSQLConnection 
+        key: POSTGRESQLCONNECTION 
 
 auth:
   secretStore: secretstore

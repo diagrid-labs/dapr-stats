@@ -7,7 +7,7 @@ using Octokit;
 
 var daprClient = new DaprClientBuilder().Build();
 const string secretStore = "secretstore";
-const string DaprStatsGitHubPATKey = "DaprStatsGitHubPAT";
+const string DaprStatsGitHubPATKey = "DAPRSTATSGITHUBPAT";
 var ghPATDictionary = await daprClient.GetSecretAsync(secretStore, DaprStatsGitHubPATKey);
 
 var builder = WebApplication.CreateBuilder(args);
