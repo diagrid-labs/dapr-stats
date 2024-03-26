@@ -16,7 +16,7 @@ jobs:
           with:
             version: '1.13.0'
         - name: Run dapr init
-          run: dapr init --slim
+          run: dapr init
         - name: Check dapr versions
           run: dapr -v
 
