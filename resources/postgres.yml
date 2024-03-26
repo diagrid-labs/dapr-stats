@@ -8,7 +8,7 @@ spec:
   metadata:
     - name: connectionString
       secretKeyRef:
-        name: PostgreSQLConnection
+        name: POSTGRESQLCONNECTION
         key: POSTGRESQLCONNECTION 
 
 auth:
