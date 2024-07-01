@@ -36,14 +36,13 @@ namespace DaprStats
                     CollectionDate = DateTime.UtcNow,
                     PackageName = daprClientPackage.Identity.Id,
                     PackageVersion = version.Version.ToFullString(),
-                    Downloads = version.DownloadCount,
-                    CollectedOverNumberOfDays = 6 * 7
+                    Downloads = version.DownloadCount
                 };
                 Console.WriteLine($"Package: {nugetPackageVersionData.PackageName}, Version: {nugetPackageVersionData.PackageVersion}, Downloads: {nugetPackageVersionData.Downloads}");
                 
                 const string tableName = "nuget_dapr_client";
-                var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5)";
-                var sqlParameters = new object[] { nugetPackageVersionData.PackageName, nugetPackageVersionData.CollectionDate, nugetPackageVersionData.PackageVersion, nugetPackageVersionData.Downloads, nugetPackageVersionData.CollectedOverNumberOfDays};
+                var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count) values ($1, $2, $3, $4)";
+                var sqlParameters = new object[] { nugetPackageVersionData.PackageName, nugetPackageVersionData.CollectionDate, nugetPackageVersionData.PackageVersion, nugetPackageVersionData.Downloads};
                 
                 await _output.InsertAsync(sqlText, sqlParameters);
             }
@@ -58,6 +57,5 @@ namespace DaprStats
         public string PackageVersion { get; set; }
         public long? Downloads { get; set; }
         public DateTime CollectionDate { get ; set; }
-        public int CollectedOverNumberOfDays { get; set; }
     }
 }
