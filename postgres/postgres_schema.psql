@@ -1,0 +1,127 @@
+CREATE TABLE nuget_dapr_client (
+    id SERIAL PRIMARY KEY,
+    package_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    package_version VARCHAR(50) NOT NULL,
+    download_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT
+);
+
+CREATE TABLE npm_dapr_dapr (
+    id SERIAL PRIMARY KEY,
+    package_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    package_version VARCHAR(50) NOT NULL,
+    download_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT
+);
+
+CREATE TABLE python_dapr (
+    id SERIAL PRIMARY KEY,
+    package_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    package_version VARCHAR(50) NOT NULL,
+    download_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT
+);
+
+CREATE TABLE java_dapr_sdk (
+    id SERIAL PRIMARY KEY,
+    package_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    package_version VARCHAR(50) NOT NULL,
+    download_count BIGINT NOT NULL,
+    percentage NUMERIC(5,4),
+    collected_over_number_of_days SMALLINT
+);
+
+
+CREATE TABLE discord_dapr (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    member_count INT NOT NULL
+);
+
+CREATE TABLE github_dapr (
+    id SERIAL PRIMARY KEY,
+    repo_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    fork_count_total INT NOT NULL,
+    star_count_total INT NOT NULL,
+    commit_count INT NOT NULL,
+    commit_users TEXT,
+    issue_count INT NOT NULL,
+    issue_users TEXT,
+    comment_count INT NOT NULL, 
+    comment_users TEXT,
+    pullrequest_count INT NOT NULL,
+    pullrequest_users TEXT,
+    distinct_user_count INT NOT NULL,
+    collected_over_number_of_days SMALLINT
+);
+
+CREATE TABLE website_dapr (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    user_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT
+);
+
+CREATE TABLE youtube_dapr (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    view_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT
+);
+
+---
+
+CREATE VIEW nuget_dapr_client_view AS
+
+SELECT 
+    collection_date,
+    package_version,
+    days_diff,
+    ROUND(((download_count - LAG(download_count, 1, 0) OVER (PARTITION BY package_version ORDER BY collection_date))/days_diff)*7) AS download_count_increment
+FROM 
+    (SELECT 
+        collection_date::date,
+        package_version,
+        EXTRACT(DAY FROM(collection_date::timestamp - LAG(collection_date::timestamp, 1, collection_date::timestamp - INTERVAL '15 days') OVER (PARTITION BY package_version ORDER BY collection_date))) as days_diff,
+        download_count
+    FROM 
+        nuget_dapr_client
+    ) sub
+ORDER BY 
+    collection_date,
+    package_version;
+
+---
+
+CREATE VIEW java_dapr_sdk_view AS
+
+SELECT 
+    collection_date::date,
+    package_version,
+    ROUND(download_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_downloads
+FROM 
+    java_dapr_sdk
+ORDER BY 
+    collection_date,
+    package_version
+
+---
+
+CREATE VIEW weekly_github_counts_dapr AS
+SELECT 
+    repo_name,
+    collection_date,
+    ROUND(issue_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_issue_count,
+    ROUND(comment_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_comment_count,
+    ROUND(commit_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_commit_count,
+    ROUND(pullrequest_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_pullrequest_count,
+    ROUND(distinct_user_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_distinct_user_count
+FROM 
+    github_dapr
+
+---

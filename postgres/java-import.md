@@ -7,6 +7,14 @@
 4. Add the collection_date value (e.g. 2024-04-01) as the second column to all records in the csv file.
 5. Add the collected_over_number_of_days value (the number of days in the month: 30) as the last column to all records in the csv file.
 6. Save the file.
+
+   Example:
+
+   ```csv
+   package_name,collection_date,package_version,download_count,percentage,collection_over_number_of_days
+   "dapr-sdk","2024-05-01","0.2.0-beta-1","6","2.1550175733864307E-4",31
+   ```
+
 7. Use pgAdmin to import the csv file. Use the following settings:
    - Format: csv
    - Options: Header = 'true', Delimiter = ','

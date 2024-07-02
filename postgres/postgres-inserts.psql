@@ -1,0 +1,11 @@
+--- Insert Dapr website records manually
+INSERT INTO website_dapr (collection_date, user_count, collected_over_number_of_days)
+VALUES ('2024-04-01 00:00:00', 1828, 16);
+-- collect from 17 to 1 (incl)
+-- collect from 1 to 16 (incl)
+
+--- Insert Dapr YouTube records manually
+INSERT INTO youtube_dapr (collection_date, view_count, collected_over_number_of_days)
+VALUES ('2024-04-01 00:00:00', 30000, 31);
+
+
