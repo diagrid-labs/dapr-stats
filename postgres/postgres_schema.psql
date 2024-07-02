@@ -63,15 +63,13 @@ CREATE TABLE github_dapr (
 CREATE TABLE website_dapr (
     id SERIAL PRIMARY KEY,
     collection_date TIMESTAMP NOT NULL,
-    user_count BIGINT NOT NULL,
-    collected_over_number_of_days SMALLINT
+    user_count BIGINT NOT NULL
 );
 
 CREATE TABLE youtube_dapr (
     id SERIAL PRIMARY KEY,
     collection_date TIMESTAMP NOT NULL,
-    view_count BIGINT NOT NULL,
-    collected_over_number_of_days SMALLINT
+    view_count BIGINT NOT NULL
 );
 
 ---
