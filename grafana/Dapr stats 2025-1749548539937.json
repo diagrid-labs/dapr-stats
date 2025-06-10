@@ -1,0 +1,2038 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Dapr community and SDK metrics. This data gets updated twice a month.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 0,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 11,
+      "panels": [],
+      "title": "SDKs",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "be1ptcrl39slce"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "net_sdk_weekly (lastNotNull)"
+            },
+            "properties": [
+              {
+                "id": "custom.gradientMode",
+                "value": "opacity"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "id": 10,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "auto",
+        "showValue": "always",
+        "stacking": "none",
+        "text": {
+          "valueSize": 18
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "collection_date",
+        "xTickLabelRotation": -90,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.1.0-89256.patch1-89350",
+      "targets": [
+        {
+          "dataset": "daprstats",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT collection_date, package_version, download_count_increment FROM nuget_dapr_client_view WHERE collection_date >= '2025-01-01' ORDER BY collection_date ASC LIMIT 1000 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [
+                  {
+                    "name": "collection_date",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "package_version",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "download_count_increment",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 1000,
+            "orderBy": {
+              "property": {
+                "name": [
+                  "collection_date"
+                ],
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "ASC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "8b8b888a-89ab-4cde-b012-319759318acb",
+                  "properties": {
+                    "field": "collection_date",
+                    "fieldSrc": "field",
+                    "operator": "greater_or_equal",
+                    "value": [
+                      "2025-01-01"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "date"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "bb8b9ab9-0123-4456-b89a-b1975925b8fb",
+              "type": "group"
+            },
+            "whereString": "collection_date >= '2025-01-01'"
+          },
+          "table": "nuget_dapr_client_view"
+        }
+      ],
+      "title": ".NET SDK downloads (all versions, weekly average)",
+      "transformations": [
+        {
+          "id": "formatTime",
+          "options": {
+            "outputFormat": "MMM-DD",
+            "timeField": "collection_date",
+            "useTimezone": true
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "collection_date": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "download_count_increment": {
+                "aggregations": [
+                  "sum"
+                ],
+                "operation": "aggregate"
+              },
+              "net_sdk_weekly": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "package_version": {
+                "aggregations": []
+              }
+            }
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "be1ptcrl39slce"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "green",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "python_sdk_weekly"
+            },
+            "properties": [
+              {
+                "id": "custom.gradientMode",
+                "value": "opacity"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "id": 8,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": false
+        },
+        "orientation": "auto",
+        "showValue": "always",
+        "stacking": "none",
+        "text": {
+          "valueSize": 18
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xField": "collection_date",
+        "xTickLabelRotation": -90,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.1.0-89256.patch1-89350",
+      "targets": [
+        {
+          "dataset": "daprstats",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT download_count, collection_date FROM python_dapr WHERE collection_date >= '2025-01-01 00:00:00.000' ORDER BY collection_date ASC LIMIT 1000 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [
+                  {
+                    "name": "download_count",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "collection_date",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 1000,
+            "orderBy": {
+              "property": {
+                "name": [
+                  "collection_date"
+                ],
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "ASC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "ab898a89-cdef-4012-b456-71975933bc64",
+                  "properties": {
+                    "field": "collection_date",
+                    "fieldSrc": "field",
+                    "operator": "greater_or_equal",
+                    "value": [
+                      "2025-01-01 00:00:00"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "bb8b9ab9-0123-4456-b89a-b1975925b8fb",
+              "type": "group"
+            },
+            "whereString": "collection_date >= '2025-01-01 00:00:00.000'"
+          },
+          "table": "python_dapr"
+        }
+      ],
+      "title": "Python SDK downloads (all versions, weekly average)",
+      "transformations": [
+        {
+          "id": "formatTime",
+          "options": {
+            "outputFormat": "MMM-DD",
+            "timeField": "collection_date",
+            "timezone": "utc",
+            "useTimezone": true
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "be1ptcrl39slce"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "yellow",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "js_sdk_weekly (lastNotNull)"
+            },
+            "properties": [
+              {
+                "id": "custom.gradientMode",
+                "value": "opacity"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 9,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": false
+        },
+        "orientation": "auto",
+        "showValue": "always",
+        "stacking": "none",
+        "text": {
+          "valueSize": 18
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xField": "collection_date",
+        "xTickLabelRotation": -90,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.1.0-89256.patch1-89350",
+      "targets": [
+        {
+          "dataset": "daprstats",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "SELECT collection_date, download_count FROM npm_dapr_dapr WHERE collection_date >= '2025-01-01 00:00:00.000' ORDER BY collection_date ASC LIMIT 1000 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [
+                  {
+                    "name": "collection_date",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "download_count",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 1000,
+            "orderBy": {
+              "property": {
+                "name": [
+                  "collection_date"
+                ],
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "ASC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "ba8a9bab-cdef-4012-b456-719759350eaf",
+                  "properties": {
+                    "field": "collection_date",
+                    "fieldSrc": "field",
+                    "operator": "greater_or_equal",
+                    "value": [
+                      "2025-01-01 00:00:00"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "bb8b9ab9-0123-4456-b89a-b1975925b8fb",
+              "type": "group"
+            },
+            "whereString": "collection_date >= '2025-01-01 00:00:00.000'"
+          },
+          "table": "npm_dapr_dapr"
+        }
+      ],
+      "title": "JavaScript SDK downloads (all versions, weekly average)",
+      "transformations": [
+        {
+          "id": "formatTime",
+          "options": {
+            "outputFormat": "MMM-DD",
+            "timeField": "collection_date",
+            "timezone": "utc",
+            "useTimezone": true
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "collection_date": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "download_count": {
+                "aggregations": [
+                  "sum"
+                ],
+                "operation": "aggregate"
+              },
+              "js_sdk_weekly": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "package_version": {
+                "aggregations": []
+              }
+            }
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "be1ptcrl39slce"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "semi-dark-purple",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "java_sdk_weekly (lastNotNull)"
+            },
+            "properties": [
+              {
+                "id": "custom.gradientMode",
+                "value": "opacity"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": ""
+            },
+            "properties": []
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 27,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "auto",
+        "showValue": "always",
+        "stacking": "none",
+        "text": {
+          "valueSize": 18
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "collection_date",
+        "xTickLabelRotation": -90,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.1.0-89256.patch1-89350",
+      "targets": [
+        {
+          "dataset": "daprstats",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": false,
+          "rawSql": "SELECT collection_date, avg_weekly_downloads FROM java_dapr_sdk_view WHERE collection_date >= '2025-01-01' ORDER BY collection_date ASC LIMIT 1000 ",
+          "refId": "Actual",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [
+                  {
+                    "name": "collection_date",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "avg_weekly_downloads",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 1000,
+            "orderBy": {
+              "property": {
+                "name": [
+                  "collection_date"
+                ],
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "ASC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b989998b-cdef-4012-b456-719759373794",
+                  "properties": {
+                    "field": "collection_date",
+                    "fieldSrc": "field",
+                    "operator": "greater_or_equal",
+                    "value": [
+                      "2025-01-01"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "date"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "bb8b9ab9-0123-4456-b89a-b1975925b8fb",
+              "type": "group"
+            },
+            "whereString": "collection_date >= '2025-01-01'"
+          },
+          "table": "java_dapr_sdk_view"
+        }
+      ],
+      "title": "Java SDK downloads (all versions, weekly average)",
+      "transformations": [
+        {
+          "id": "formatTime",
+          "options": {
+            "outputFormat": "MMM-DD",
+            "timeField": "collection_date",
+            "useTimezone": true
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "avg_weekly_downloads": {
+                "aggregations": [
+                  "sum"
+                ],
+                "operation": "aggregate"
+              },
+              "collection_date": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "java_sdk_weekly": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              }
+            }
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 12,
+      "panels": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "#4032d9",
+                "mode": "fixed"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 1,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "min": 3000,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "discord_member_count"
+                },
+                "properties": [
+                  {
+                    "id": "custom.gradientMode",
+                    "value": "opacity"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "id": 1,
+          "links": [
+            {
+              "targetBlank": true,
+              "title": "Visit the Dapr Discord",
+              "url": "https://bit.ly/dapr-discord"
+            }
+          ],
+          "options": {
+            "barRadius": 0,
+            "barWidth": 0.95,
+            "fullHighlight": false,
+            "groupWidth": 0.7,
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "orientation": "auto",
+            "showValue": "always",
+            "stacking": "none",
+            "text": {
+              "valueSize": 18
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            },
+            "xTickLabelRotation": -90,
+            "xTickLabelSpacing": 0
+          },
+          "pluginVersion": "12.1.0-89256.patch1-89350",
+          "targets": [
+            {
+              "dataset": "daprstats",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "be1ptcrl39slce"
+              },
+              "editorMode": "builder",
+              "format": "table",
+              "rawSql": "SELECT collection_date, member_count FROM discord_dapr WHERE collection_date >= '2025-01-01 00:00:00.000' ORDER BY collection_date LIMIT 500 ",
+              "refId": "A",
+              "sql": {
+                "columns": [
+                  {
+                    "parameters": [
+                      {
+                        "name": "collection_date",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "member_count",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  }
+                ],
+                "groupBy": [
+                  {
+                    "property": {
+                      "type": "string"
+                    },
+                    "type": "groupBy"
+                  }
+                ],
+                "limit": 500,
+                "orderBy": {
+                  "property": {
+                    "name": "collection_date",
+                    "type": "string"
+                  },
+                  "type": "property"
+                },
+                "whereJsonTree": {
+                  "children1": [
+                    {
+                      "id": "9ababb8b-0123-4456-b89a-b19758fec1dd",
+                      "properties": {
+                        "field": "collection_date",
+                        "fieldSrc": "field",
+                        "operator": "greater_or_equal",
+                        "value": [
+                          "2025-01-01 00:00:00"
+                        ],
+                        "valueError": [
+                          null
+                        ],
+                        "valueSrc": [
+                          "value"
+                        ],
+                        "valueType": [
+                          "datetime"
+                        ]
+                      },
+                      "type": "rule"
+                    }
+                  ],
+                  "id": "b89b8b99-0123-4456-b89a-b19758fe0c74",
+                  "type": "group"
+                },
+                "whereString": "collection_date >= '2025-01-01 00:00:00.000'"
+              },
+              "table": "discord_dapr"
+            }
+          ],
+          "title": "Dapr Discord Users (cumulative)",
+          "transformations": [
+            {
+              "id": "formatTime",
+              "options": {
+                "outputFormat": "MMM-DD",
+                "timeField": "collection_date",
+                "useTimezone": true
+              }
+            }
+          ],
+          "type": "barchart"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 1,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          },
+          "id": 14,
+          "links": [
+            {
+              "targetBlank": true,
+              "title": "Visit the Dapr GitHub repository.",
+              "url": "https://github.com/dapr/dapr"
+            }
+          ],
+          "options": {
+            "barRadius": 0,
+            "barWidth": 0.97,
+            "fullHighlight": false,
+            "groupWidth": 0.7,
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "orientation": "auto",
+            "showValue": "auto",
+            "stacking": "none",
+            "text": {
+              "valueSize": 18
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            },
+            "xTickLabelRotation": -90,
+            "xTickLabelSpacing": 0
+          },
+          "pluginVersion": "12.1.0-89256.patch1-89350",
+          "targets": [
+            {
+              "dataset": "daprstats",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "be1ptcrl39slce"
+              },
+              "editorMode": "builder",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT repo_name, collection_date, fork_count_total, star_count_total FROM github_dapr WHERE collection_date >= '2025-01-01 00:00:00.000' ORDER BY collection_date ASC LIMIT 1000 ",
+              "refId": "A",
+              "sql": {
+                "columns": [
+                  {
+                    "parameters": [
+                      {
+                        "name": "repo_name",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "collection_date",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "fork_count_total",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "star_count_total",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  }
+                ],
+                "groupBy": [
+                  {
+                    "property": {
+                      "type": "string"
+                    },
+                    "type": "groupBy"
+                  }
+                ],
+                "limit": 1000,
+                "orderBy": {
+                  "property": {
+                    "name": [
+                      "collection_date"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "property"
+                },
+                "orderByDirection": "ASC",
+                "whereJsonTree": {
+                  "children1": [
+                    {
+                      "id": "aa9b9ab9-0123-4456-b89a-b1975929d972",
+                      "properties": {
+                        "field": "collection_date",
+                        "fieldSrc": "field",
+                        "operator": "greater_or_equal",
+                        "value": [
+                          "2025-01-01 00:00:00"
+                        ],
+                        "valueError": [
+                          null
+                        ],
+                        "valueSrc": [
+                          "value"
+                        ],
+                        "valueType": [
+                          "datetime"
+                        ]
+                      },
+                      "type": "rule"
+                    }
+                  ],
+                  "id": "bb8b9ab9-0123-4456-b89a-b1975925b8fb",
+                  "type": "group"
+                },
+                "whereString": "collection_date >= '2025-01-01 00:00:00.000'"
+              },
+              "table": "github_dapr"
+            }
+          ],
+          "title": "GitHub Forks and Stars (dapr/dapr)",
+          "transformations": [
+            {
+              "id": "formatTime",
+              "options": {
+                "outputFormat": "MMM-DD",
+                "timeField": "collection_date",
+                "useTimezone": true
+              }
+            },
+            {
+              "id": "groupBy",
+              "options": {
+                "fields": {
+                  "collection_date": {
+                    "aggregations": [],
+                    "operation": "groupby"
+                  },
+                  "commit_count": {
+                    "aggregations": [
+                      "sum"
+                    ]
+                  },
+                  "distinct_user_count": {
+                    "aggregations": [
+                      "sum"
+                    ]
+                  },
+                  "fork_count_total": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "issue_count": {
+                    "aggregations": [
+                      "sum"
+                    ]
+                  },
+                  "pullrequest_count": {
+                    "aggregations": [
+                      "sum"
+                    ]
+                  },
+                  "star_count_total": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  }
+                }
+              }
+            }
+          ],
+          "type": "barchart"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "#4985f2",
+                "mode": "fixed"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 100,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 1,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "website_views"
+                },
+                "properties": [
+                  {
+                    "id": "custom.gradientMode",
+                    "value": "opacity"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 26
+          },
+          "id": 24,
+          "links": [
+            {
+              "targetBlank": true,
+              "title": "Visit the Dapr website",
+              "url": "https://dapr.io/"
+            }
+          ],
+          "options": {
+            "barRadius": 0,
+            "barWidth": 0.95,
+            "fullHighlight": false,
+            "groupWidth": 0.7,
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "orientation": "auto",
+            "showValue": "always",
+            "stacking": "none",
+            "text": {
+              "valueSize": 18
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            },
+            "xTickLabelRotation": -90,
+            "xTickLabelSpacing": 0
+          },
+          "pluginVersion": "12.1.0-89256.patch1-89350",
+          "targets": [
+            {
+              "dataset": "daprstats",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "be1ptcrl39slce"
+              },
+              "editorMode": "builder",
+              "format": "table",
+              "rawSql": "SELECT collection_date, user_count FROM website_dapr WHERE collection_date >= '2025-01-01 00:00:00.000' ORDER BY collection_date ASC LIMIT 1000 ",
+              "refId": "A",
+              "sql": {
+                "columns": [
+                  {
+                    "parameters": [
+                      {
+                        "name": "collection_date",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "user_count",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  }
+                ],
+                "groupBy": [
+                  {
+                    "property": {
+                      "type": "string"
+                    },
+                    "type": "groupBy"
+                  }
+                ],
+                "limit": 1000,
+                "orderBy": {
+                  "property": {
+                    "name": "collection_date",
+                    "type": "string"
+                  },
+                  "type": "property"
+                },
+                "orderByDirection": "ASC",
+                "whereJsonTree": {
+                  "children1": [
+                    {
+                      "id": "b9a88baa-4567-489a-bcde-f197592bd77a",
+                      "properties": {
+                        "field": "collection_date",
+                        "fieldSrc": "field",
+                        "operator": "greater_or_equal",
+                        "value": [
+                          "2025-01-01 00:00:00"
+                        ],
+                        "valueError": [
+                          null
+                        ],
+                        "valueSrc": [
+                          "value"
+                        ],
+                        "valueType": [
+                          "datetime"
+                        ]
+                      },
+                      "type": "rule"
+                    }
+                  ],
+                  "id": "bb8b9ab9-0123-4456-b89a-b1975925b8fb",
+                  "type": "group"
+                },
+                "whereString": "collection_date >= '2025-01-01 00:00:00.000'"
+              },
+              "table": "website_dapr"
+            }
+          ],
+          "title": "Dapr Website & Docs Users (cumulative for 2025)",
+          "transformations": [
+            {
+              "id": "formatTime",
+              "options": {
+                "outputFormat": "MMM-DD",
+                "timeField": "collection_date",
+                "useTimezone": true
+              }
+            }
+          ],
+          "type": "barchart"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 1,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 26
+          },
+          "id": 26,
+          "options": {
+            "barRadius": 0,
+            "barWidth": 0.97,
+            "fullHighlight": false,
+            "groupWidth": 0.7,
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "orientation": "auto",
+            "showValue": "always",
+            "stacking": "none",
+            "text": {
+              "valueSize": 20
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            },
+            "xTickLabelRotation": -90,
+            "xTickLabelSpacing": 0
+          },
+          "pluginVersion": "12.1.0-89256.patch1-89350",
+          "targets": [
+            {
+              "dataset": "daprstats",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "be1ptcrl39slce"
+              },
+              "editorMode": "builder",
+              "format": "table",
+              "rawSql": "SELECT repo_name, collection_date, avg_weekly_issue_count, avg_weekly_comment_count, avg_weekly_commit_count, avg_weekly_pullrequest_count, avg_weekly_distinct_user_count FROM weekly_github_counts_dapr WHERE collection_date >= '2025-01-01 00:00:00.000' ORDER BY collection_date LIMIT 1000 ",
+              "refId": "A",
+              "sql": {
+                "columns": [
+                  {
+                    "parameters": [
+                      {
+                        "name": "repo_name",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "collection_date",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "avg_weekly_issue_count",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "avg_weekly_comment_count",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "avg_weekly_commit_count",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "avg_weekly_pullrequest_count",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "avg_weekly_distinct_user_count",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  }
+                ],
+                "groupBy": [
+                  {
+                    "property": {
+                      "type": "string"
+                    },
+                    "type": "groupBy"
+                  }
+                ],
+                "limit": 1000,
+                "orderBy": {
+                  "property": {
+                    "name": [
+                      "collection_date"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "property"
+                },
+                "whereJsonTree": {
+                  "children1": [
+                    {
+                      "id": "9bbbb98b-89ab-4cde-b012-3197592f71aa",
+                      "properties": {
+                        "field": "collection_date",
+                        "fieldSrc": "field",
+                        "operator": "greater_or_equal",
+                        "value": [
+                          "2025-01-01 00:00:00"
+                        ],
+                        "valueError": [
+                          null
+                        ],
+                        "valueSrc": [
+                          "value"
+                        ],
+                        "valueType": [
+                          "datetime"
+                        ]
+                      },
+                      "type": "rule"
+                    }
+                  ],
+                  "id": "bb8b9ab9-0123-4456-b89a-b1975925b8fb",
+                  "type": "group"
+                },
+                "whereString": "collection_date >= '2025-01-01 00:00:00.000'"
+              },
+              "table": "weekly_github_counts_dapr"
+            }
+          ],
+          "title": "GitHub stats for all dapr repos (weekly average)",
+          "transformations": [
+            {
+              "id": "formatTime",
+              "options": {
+                "outputFormat": "MMM-DD",
+                "timeField": "collection_date",
+                "timezone": "utc",
+                "useTimezone": true
+              }
+            },
+            {
+              "id": "groupBy",
+              "options": {
+                "fields": {
+                  "avg_weekly_comment_count": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "avg_weekly_commit_count": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "avg_weekly_distinct_user_count": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "avg_weekly_issue_count": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "avg_weekly_pullrequest_count": {
+                    "aggregations": [
+                      "sum"
+                    ],
+                    "operation": "aggregate"
+                  },
+                  "collection_date": {
+                    "aggregations": [],
+                    "operation": "groupby"
+                  }
+                }
+              }
+            }
+          ],
+          "type": "barchart"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "be1ptcrl39slce"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "fixedColor": "semi-dark-red",
+                "mode": "fixed"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 100,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineWidth": 1,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "youtube_views"
+                },
+                "properties": [
+                  {
+                    "id": "custom.gradientMode",
+                    "value": "opacity"
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 34
+          },
+          "id": 25,
+          "links": [
+            {
+              "targetBlank": true,
+              "title": "Visit the Dapr YouTube channel",
+              "url": "https://www.youtube.com/@daprdev"
+            }
+          ],
+          "options": {
+            "barRadius": 0,
+            "barWidth": 0.95,
+            "fullHighlight": false,
+            "groupWidth": 0.7,
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": false
+            },
+            "orientation": "auto",
+            "showValue": "always",
+            "stacking": "none",
+            "text": {
+              "valueSize": 18
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            },
+            "xTickLabelRotation": -90,
+            "xTickLabelSpacing": 0
+          },
+          "pluginVersion": "12.1.0-89256.patch1-89350",
+          "targets": [
+            {
+              "dataset": "daprstats",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "be1ptcrl39slce"
+              },
+              "editorMode": "builder",
+              "format": "table",
+              "rawSql": "SELECT collection_date, view_count FROM youtube_dapr WHERE collection_date >= '2025-01-01 00:00:00.000' ORDER BY collection_date ASC LIMIT 1000 ",
+              "refId": "A",
+              "sql": {
+                "columns": [
+                  {
+                    "parameters": [
+                      {
+                        "name": "collection_date",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  },
+                  {
+                    "parameters": [
+                      {
+                        "name": "view_count",
+                        "type": "functionParameter"
+                      }
+                    ],
+                    "type": "function"
+                  }
+                ],
+                "groupBy": [
+                  {
+                    "property": {
+                      "type": "string"
+                    },
+                    "type": "groupBy"
+                  }
+                ],
+                "limit": 1000,
+                "orderBy": {
+                  "property": {
+                    "name": "collection_date",
+                    "type": "string"
+                  },
+                  "type": "property"
+                },
+                "orderByDirection": "ASC",
+                "whereJsonTree": {
+                  "children1": [
+                    {
+                      "id": "99a889b9-4567-489a-bcde-f197592d62ba",
+                      "properties": {
+                        "field": "collection_date",
+                        "fieldSrc": "field",
+                        "operator": "greater_or_equal",
+                        "value": [
+                          "2025-01-01 00:00:00"
+                        ],
+                        "valueError": [
+                          null
+                        ],
+                        "valueSrc": [
+                          "value"
+                        ],
+                        "valueType": [
+                          "datetime"
+                        ]
+                      },
+                      "type": "rule"
+                    }
+                  ],
+                  "id": "bb8b9ab9-0123-4456-b89a-b1975925b8fb",
+                  "type": "group"
+                },
+                "whereString": "collection_date >= '2025-01-01 00:00:00.000'"
+              },
+              "table": "youtube_dapr"
+            }
+          ],
+          "title": "Dapr YouTube Views (cumulative for 2025)",
+          "transformations": [
+            {
+              "id": "formatTime",
+              "options": {
+                "outputFormat": "MMM-DD",
+                "timeField": "collection_date",
+                "useTimezone": true
+              }
+            }
+          ],
+          "type": "barchart"
+        }
+      ],
+      "title": "Community",
+      "type": "row"
+    }
+  ],
+  "preload": false,
+  "refresh": "",
+  "schemaVersion": 41,
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true,
+    "refresh_intervals": [
+      "1d"
+    ]
+  },
+  "timezone": "utc",
+  "title": "Dapr stats 2025",
+  "uid": "daprstats2025",
+  "version": 15
+}
