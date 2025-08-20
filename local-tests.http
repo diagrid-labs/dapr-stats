@@ -5,7 +5,7 @@
 ### Start the CollectorWorkflow
 ###
 // @name wfrequest
-POST {{dapr_url}}/v1.0-beta1/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
 Content-Type: application/json
 
 {
@@ -19,4 +19,4 @@ Content-Type: application/json
 
 ### Get the status of the workflow
 @wfresponse={{wfrequest.response.body.instanceID}}
-GET {{dapr_url}}/v1.0-beta1/workflows/dapr/{{wfresponse}}
+GET {{dapr_url}}/v1.0/workflows/dapr/{{wfresponse}}
