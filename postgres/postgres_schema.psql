@@ -79,6 +79,7 @@ CREATE VIEW nuget_dapr_client_view AS
 SELECT 
     collection_date,
     package_version,
+    package_name,
     days_diff,
     ROUND(((download_count - LAG(download_count, 1, 0) OVER (PARTITION BY package_version ORDER BY collection_date))/days_diff)*7) AS download_count_increment
 FROM 
@@ -89,6 +90,53 @@ FROM
         download_count
     FROM 
         nuget_dapr_client
+    WHERE
+         package_name = 'Dapr.Client'
+    ) sub
+ORDER BY 
+    collection_date,
+    package_version;
+
+
+CREATE OR REPLACE VIEW nuget_dapr_workflow_view AS
+
+SELECT 
+    collection_date, 
+    package_version,
+    days_diff,
+    ROUND(((download_count - LAG(download_count, 1, 0) OVER (PARTITION BY package_version ORDER BY collection_date))/days_diff)*7) AS download_count_increment
+FROM 
+    (SELECT 
+        collection_date::date,
+        package_version,
+        EXTRACT(DAY FROM(collection_date::timestamp - LAG(collection_date::timestamp, 1, collection_date::timestamp - INTERVAL '15 days') OVER (PARTITION BY package_version ORDER BY collection_date))) as days_diff,
+        download_count
+    FROM 
+        nuget_dapr_client
+    WHERE
+         package_name = 'Dapr.Workflow'
+    ) sub
+ORDER BY 
+    collection_date,
+    package_version;
+
+CREATE OR REPLACE VIEW nuget_dapr_aspnetcore_view AS
+
+SELECT 
+    collection_date, 
+    package_version,
+    days_diff,
+    ROUND(((download_count - LAG(download_count, 1, 0) OVER (PARTITION BY package_version ORDER BY collection_date))/days_diff)*7) AS download_count_increment
+FROM 
+    (SELECT 
+        collection_date::date,
+        package_version,
+        EXTRACT(DAY FROM(collection_date::timestamp - LAG(collection_date::timestamp, 1, collection_date::timestamp - INTERVAL '15 days') OVER (PARTITION BY package_version ORDER BY collection_date))) as days_diff,
+        download_count
+    FROM 
+        nuget_dapr_client
+    WHERE
+         package_name = 'Dapr.AspNetCore'
     ) sub
 ORDER BY 
     collection_date,
