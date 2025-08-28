@@ -28,6 +28,11 @@ GET https://api.npmjs.org/versions/{{npmPackage}}/{{period}}
 GET https://pypistats.org/api/packages/dapr/recent
 
 ### ---
+## PyPi Stats Dapr-Agents
+GET https://pypistats.org/api/packages/dapr-agents/recent
+
+
+### ---
 ### Discord
 @apiVersion=10
 GET https://discord.com/api/v{{apiVersion}}/guilds/{{discordServerId}}?with_counts=true
