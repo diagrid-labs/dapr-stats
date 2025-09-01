@@ -23,15 +23,15 @@ namespace DaprStats
             {
                 var pypiPackageVersionResponse = await response.Content.ReadFromJsonAsync<PyPiPackageVersionResponse>();
 
-                Console.WriteLine($"Package: {pypiPackageVersionResponse.Package}, Downloads: {pypiPackageVersionResponse.Data["last_week"]}");
+                Console.WriteLine($"Package: {pypiPackageVersionResponse.Package}, Downloads: {pypiPackageVersionResponse.Data["last_month"]}");
 
                 var pythonPackageData = new PythonPackageData
                 {
                     CollectionDate = DateTime.UtcNow,
                     PackageName = pypiPackageVersionResponse.Package,
                     PackageVersion = "all",
-                    Downloads = pypiPackageVersionResponse.Data["last_week"],
-                    CollectedOverNumberOfDays = 7
+                    Downloads = pypiPackageVersionResponse.Data["last_month"],
+                    CollectedOverNumberOfDays = 30
                 };
 
                 const string tableName = "python_dapr";
