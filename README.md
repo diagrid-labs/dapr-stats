@@ -16,6 +16,15 @@ At the moment the data sources include:
 
 The program is a .NET web service that's using Dapr workflow.
 
+## Set Environment Variables
+
+The application requires the following secrets to be set as environment variables when running locally:
+
+- `DAPRSTATSGITHUBPAT=<GITHUB_PAT_VALUE>`
+- `DISCORDBOTTOKEN=<DISCORD_BOT_TOKEN_VALUE>`
+- `DAPRDISCORDSERVERID=<DISCORD_SERVER_ID_VALUE>`
+- `$POSTGRESQLCONNECTION=<POSTGRES_CONNECTION_VALUE>`
+
 ## Running the CollectDaprStats program
 
 The program is run in a GitHub Codespace on the 1st and 16th of each month.
