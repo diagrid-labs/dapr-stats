@@ -5,7 +5,7 @@ using Discord.Rest;
 
 namespace DaprStats
 {
-    public class GetDiscordData : WorkflowActivity<string, bool>
+    public class GetDiscordData : WorkflowActivity<DiscordInput, bool>
     {
         private readonly DiscordRestClient _discordClient;
         private readonly PostgresOutput _output;
@@ -20,7 +20,7 @@ namespace DaprStats
 
         public override async Task<bool> RunAsync(
             WorkflowActivityContext context,
-            string input)
+            DiscordInput input)
         {
 
             const string secretStore = "secretstore";
@@ -33,25 +33,25 @@ namespace DaprStats
             ulong.TryParse(serverIdDictionary[DaprDiscordServerIdKey], out var DaprDiscordServerId);
             var daprServer = await _discordClient.GetGuildAsync(DaprDiscordServerId, withCounts: true);
 
-            var data = new DiscordData
-            {
-                CollectionDate = DateTime.UtcNow,
-                MemberCount = daprServer.ApproximateMemberCount
-            };
+            var data = new DiscordData(
+                CollectionDate: DateTime.UtcNow,
+                MemberCount: daprServer.ApproximateMemberCount
+            );
 
-            const string tableName = "discord_dapr";
-            var sqlText = $"insert into {tableName} (collection_date, member_count) values ($1, $2)";
-            var sqlParameters = new object[] { data.CollectionDate, data.MemberCount };
-            await _output.InsertAsync(sqlText, sqlParameters);
+            Console.WriteLine($"Disord data: {data.MemberCount}");
+
+            if (!input.SkipStorage)
+            {
+                const string tableName = "discord_dapr";
+                var sqlText = $"insert into {tableName} (collection_date, member_count) values ($1, $2)";
+                var sqlParameters = new object[] { data.CollectionDate, data.MemberCount };
+                await _output.InsertAsync(sqlText, sqlParameters);
+            }
 
             return true;
         }
     }
 
-    public class DiscordData
-    {
-        public DateTime CollectionDate { get; set; }
-        public long? MemberCount { get; set; }
-
-    }
+    public record DiscordInput(bool SkipStorage);
+    public record DiscordData(DateTime CollectionDate, long? MemberCount);
 }

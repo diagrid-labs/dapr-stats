@@ -23,39 +23,51 @@ namespace DaprStats
             WorkflowActivityContext context,
             GitHubDataInput input)
         {
-            const int CollectionPeriodInDays = 15;
-            var apiOptions = new ApiOptions { PageSize = 250, StartPage = 1 };
-            var repository = await _gitHubClient.Repository.Get(input.Organization, input.Repository);
-
-            var commitOutput = await GetCommitData(input, repository, CollectionPeriodInDays, apiOptions);
-            var issueOutput = await GetIssueData(input, repository, CollectionPeriodInDays, apiOptions);
-            var commentOutput = await GetCommentData(input, repository, CollectionPeriodInDays, apiOptions);
-            var pullRequestOutput = await GetPullRequestData(input, repository, CollectionPeriodInDays, apiOptions);
-
-            var distinctUserNames = commitOutput.CommitUsers.Union(issueOutput.IssueUsers).Union(commentOutput.CommentUsers).Union(pullRequestOutput.PullRequestUsers);
-
-            var githubData = new GitHubDataOutput
+            try 
             {
-                CollectionDate = DateTime.UtcNow,
-                Repository = repository.Name,
-                ForksTotalCount = repository.ForksCount,
-                StarsTotalCount = repository.StargazersCount,
-                CommitCount = commitOutput.CommitCount,
-                CommitUsers = commitOutput.JoinedCommitUsers,
-                IssueCount = issueOutput.IssueCount,
-                IssueUsers = issueOutput.JoinedIssueUsers,
-                CommentCount = commentOutput.CommentCount,
-                CommentUsers = commentOutput.JoinedCommentUsers,
-                PullRequestCount = pullRequestOutput.PullRequestCount,
-                PullRequestUsers = pullRequestOutput.JoinedPullRequestUsers,
-                DistinctUserCount = distinctUserNames.Count(),
-                CollectedOverNumberOfDays = CollectionPeriodInDays
-            };
+                const int CollectionPeriodInDays = 15;
+                var apiOptions = new ApiOptions { PageSize = 250, StartPage = 1 };
+                var repository = await _gitHubClient.Repository.Get(input.Organization, input.Repository);
+                Console.WriteLine($"Collecting data for {repository.Name}");
+                
+                var commitOutput = await GetCommitData(input, repository, CollectionPeriodInDays, apiOptions);
+                var issueOutput = await GetIssueData(input, repository, CollectionPeriodInDays, apiOptions);
+                var commentOutput = await GetCommentData(input, repository, CollectionPeriodInDays, apiOptions);
+                var pullRequestOutput = await GetPullRequestData(input, repository, CollectionPeriodInDays, apiOptions);
+                var distinctUserNames = commitOutput.CommitUsers.Union(issueOutput.IssueUsers).Union(commentOutput.CommentUsers).Union(pullRequestOutput.PullRequestUsers);
 
-            string tableName = $"github_dapr";
-            var sqlText = $"insert into {tableName} (repo_name, collection_date, fork_count_total, star_count_total, commit_count, commit_users, issue_count, issue_users, comment_count, comment_users, pullrequest_count, pullrequest_users, distinct_user_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)";
-            var sqlParameters = new object[] { githubData.Repository, githubData.CollectionDate, githubData.ForksTotalCount, githubData.StarsTotalCount, githubData.CommitCount, githubData.CommitUsers, githubData.IssueCount, githubData.IssueUsers, githubData.CommentCount, githubData.CommentUsers, githubData.PullRequestCount, githubData.PullRequestUsers, githubData.DistinctUserCount, githubData.CollectedOverNumberOfDays };
-            await _output.InsertAsync(sqlText, sqlParameters);
+            if (!input.SkipStorage)
+            {
+                var githubData = new GitHubDataOutput
+                {
+                    CollectionDate = DateTime.UtcNow,
+                    Repository = repository.Name,
+                    ForksTotalCount = repository.ForksCount,
+                    StarsTotalCount = repository.StargazersCount,
+                    CommitCount = commitOutput.CommitCount,
+                    CommitUsers = commitOutput.JoinedCommitUsers,
+                    IssueCount = issueOutput.IssueCount,
+                    IssueUsers = issueOutput.JoinedIssueUsers,
+                    CommentCount = commentOutput.CommentCount,
+                    CommentUsers = commentOutput.JoinedCommentUsers,
+                    PullRequestCount = pullRequestOutput.PullRequestCount,
+                    PullRequestUsers = pullRequestOutput.JoinedPullRequestUsers,
+                    DistinctUserCount = distinctUserNames.Count(),
+                    CollectedOverNumberOfDays = CollectionPeriodInDays
+                };
+
+                string tableName = $"github_dapr";
+                var sqlText = $"insert into {tableName} (repo_name, collection_date, fork_count_total, star_count_total, commit_count, commit_users, issue_count, issue_users, comment_count, comment_users, pullrequest_count, pullrequest_users, distinct_user_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)";
+                var sqlParameters = new object[] { githubData.Repository, githubData.CollectionDate, githubData.ForksTotalCount, githubData.StarsTotalCount, githubData.CommitCount, githubData.CommitUsers, githubData.IssueCount, githubData.IssueUsers, githubData.CommentCount, githubData.CommentUsers, githubData.PullRequestCount, githubData.PullRequestUsers, githubData.DistinctUserCount, githubData.CollectedOverNumberOfDays };
+                await _output.InsertAsync(sqlText, sqlParameters);
+            }
+
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+
             return true;
         }
 
@@ -174,7 +186,7 @@ namespace DaprStats
         }
     }
 
-    public record GitHubDataInput(DateTime CollectionDate, string Organization, string Repository);
+    public record GitHubDataInput(DateTime CollectionDate, string Organization, string Repository, bool SkipStorage);
     public record CommitOutput(int CommitCount, IEnumerable<string> CommitUsers, string JoinedCommitUsers);
     public record IssueOutput(int IssueCount, IEnumerable<string> IssueUsers, string JoinedIssueUsers);
     public record CommentOutput(int CommentCount, IEnumerable<string> CommentUsers, string JoinedCommentUsers);
