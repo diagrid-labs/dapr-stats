@@ -10,8 +10,7 @@ Content-Type: application/json
 
 {
     "CollectionDate" : "{{currentDate}}",
-    "NuGetPackageNames" : ["Dapr.Client", "Dapr.Workflow", "Dapr.AspNetCore", "
-Dapr.Extensions.Configuration", "Dapr.Actors", "Dapr.Messaging", "Dapr.Jobs", "CommunityToolkit.Aspire.Hosting.Dapr"],
+    "NuGetPackageNames" : ["Dapr.Client", "Dapr.Workflow", "Dapr.AspNetCore", "Dapr.Extensions.Configuration", "Dapr.Actors", "Dapr.Messaging", "Dapr.Jobs", "CommunityToolkit.Aspire.Hosting.Dapr"],
     "NpmPackageNames" : ["@dapr/dapr"],
     "PythonPackageNames" : ["dapr", "dapr-agents", "dapr-ext-workflow"],
     "CollectDiscordData" : true,
