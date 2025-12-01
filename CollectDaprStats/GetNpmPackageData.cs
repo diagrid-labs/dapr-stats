@@ -4,7 +4,7 @@ using Dapr.Workflow;
 
 namespace DaprStats
 {
-    public class GetNpmPackageData : WorkflowActivity<string, bool>
+    public class GetNpmPackageData : WorkflowActivity<NpmPackageInput, bool>
     {
         private readonly HttpClient _httpClient;
         private readonly PostgresOutput _output;
@@ -17,10 +17,10 @@ namespace DaprStats
 
         public override async Task<bool> RunAsync(
             WorkflowActivityContext context,
-            string packageName)
+            NpmPackageInput input)
         {
             _httpClient.BaseAddress = new Uri("https://api.npmjs.org/");
-            packageName = WebUtility.UrlEncode(packageName);
+            var packageName = WebUtility.UrlEncode(input.PackageName);
             var response = await _httpClient.GetAsync($"versions/{packageName}/last-week");
             if (response.IsSuccessStatusCode)
             {
@@ -28,21 +28,23 @@ namespace DaprStats
                 foreach (var versionPair in npmPackageVersionResponse.Downloads)
                 {
                     var npmPackageVersionData = new NpmPackageVersionData
+                    (
+                        CollectionDate: DateTime.UtcNow,
+                        PackageName: npmPackageVersionResponse.Package,
+                        PackageVersion: versionPair.Key,
+                        Downloads: versionPair.Value,
+                        CollectedOverNumberOfDays: 7
+                    );
+
+                    Console.WriteLine($"NPM Package: {npmPackageVersionData.PackageName}, Version: {npmPackageVersionData.PackageVersion}, Downloads: {npmPackageVersionData.Downloads}");
+
+                    if (!input.SkipStorage)
                     {
-                        CollectionDate = DateTime.UtcNow,
-                        PackageName = npmPackageVersionResponse.Package,
-                        PackageVersion = versionPair.Key,
-                        Downloads = versionPair.Value,
-                        CollectedOverNumberOfDays = 7
-                    };
-
-                    Console.WriteLine($"Package: {npmPackageVersionData.PackageName}, Version: {npmPackageVersionData.PackageVersion}, Downloads: {npmPackageVersionData.Downloads}");
-
-                    const string tableName = "npm_dapr_dapr";
-                    var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5)";
-                    var sqlParameters = new object[] { npmPackageVersionData.PackageName, npmPackageVersionData.CollectionDate, npmPackageVersionData.PackageVersion, npmPackageVersionData.Downloads, npmPackageVersionData.CollectedOverNumberOfDays };
-
-                    await _output.InsertAsync(sqlText, sqlParameters);
+                        const string tableName = "npm_dapr_dapr";
+                        var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5)";
+                        var sqlParameters = new object[] { npmPackageVersionData.PackageName, npmPackageVersionData.CollectionDate, npmPackageVersionData.PackageVersion, npmPackageVersionData.Downloads, npmPackageVersionData.CollectedOverNumberOfDays };
+                        await _output.InsertAsync(sqlText, sqlParameters);
+                    }
                 }
 
                 return true;
@@ -53,17 +55,7 @@ namespace DaprStats
     }
 }
 
-public class NpmPackageVersionResponse
-{
-    public string Package { get; set; }
-    public Dictionary<string, int> Downloads { get; set; }
-}
 
-public class NpmPackageVersionData
-{
-    public string PackageName { get; set; }
-    public string PackageVersion { get; set; }
-    public long? Downloads { get; set; }
-    public DateTime CollectionDate { get; set; }
-    public int CollectedOverNumberOfDays { get; set; }
-}
+public record NpmPackageInput(string PackageName, bool SkipStorage);
+public record NpmPackageVersionResponse(string Package, Dictionary<string, int> Downloads);
+public record NpmPackageVersionData(string PackageName, string PackageVersion, long? Downloads, DateTime CollectionDate, int CollectedOverNumberOfDays);
