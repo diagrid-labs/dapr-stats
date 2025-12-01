@@ -8,45 +8,39 @@ namespace DaprStats
             WorkflowContext context,
             CollectorWorkflowInput input)
         {
-            if (input.CollectNuGetData)
+            if (input.NuGetPackageNames.Length > 0)
             {
-                var nugetPackages = new[]
-                {
-                    "Dapr.Client",
-                    "Dapr.Workflow",
-                    "Dapr.AspNetCore"
-                };
                 var getNugetPackageDataTasks = new List<Task>();
-                foreach (var package in nugetPackages)
+                foreach (var nugetPackage in input.NuGetPackageNames)
                 {
                     getNugetPackageDataTasks.Add(context.CallActivityAsync(
                         nameof(GetNuGetPackageData),
-                        package));
+                        new NuGetPackageInput(nugetPackage, input.SkipStorage)));
                 }
                 await Task.WhenAll(getNugetPackageDataTasks);
             }
 
-            if (input.CollectNpmData)
+            if (input.NpmPackageNames.Length > 0)
             {
-                await context.CallActivityAsync(
-                    nameof(GetNpmPackageData),
-                    "@dapr/dapr");
+                var getNpmPackageDataTasks = new List<Task>();
+                foreach (var npmPackage in input.NpmPackageNames)
+                {
+                    getNpmPackageDataTasks.Add(context.CallActivityAsync(
+                        nameof(GetNpmPackageData),
+                        new NpmPackageInput(npmPackage, input.SkipStorage)));
+                }
+                await Task.WhenAll(getNpmPackageDataTasks);
+                
             }
 
-            if (input.CollectPythonData)
+            if (input.PythonPackageNames.Length > 0)
             {
-                var pythonPackages = new[]
-                {
-                    "dapr",
-                    "dapr-agents",
-                    "dapr-ext-workflow"
-                };
                 var getPythonPackageDataTasks = new List<Task>();
-                foreach (var package in pythonPackages)
+                foreach (var pythonPackage in input.PythonPackageNames)
                 {
                     getPythonPackageDataTasks.Add(context.CallActivityAsync(
                         nameof(GetPythonPackageData),
-                        package));
+                        new PythonPackageInput(pythonPackage, input.SkipStorage)));
                 }
                 await Task.WhenAll(getPythonPackageDataTasks);
             }
@@ -55,7 +49,7 @@ namespace DaprStats
             {
                 await context.CallActivityAsync(
                     nameof(GetDiscordData),
-                    string.Empty);
+                    new DiscordInput(input.SkipStorage));
             }
 
             if (input.CollectGitHubData)
@@ -73,7 +67,8 @@ namespace DaprStats
                     new GitHubCollectorWorkflowInput(
                         input.CollectionDate,
                         orgName,
-                        repositories));
+                        repositories,
+                        input.SkipStorage));
                 }
             }
 
@@ -83,9 +78,10 @@ namespace DaprStats
 
     public record CollectorWorkflowInput(
         DateTime CollectionDate,
-        bool CollectNuGetData,
-        bool CollectNpmData,
-        bool CollectPythonData,
+        string[] NuGetPackageNames,
+        string[] NpmPackageNames,
+        string[] PythonPackageNames,
         bool CollectDiscordData,
-        bool CollectGitHubData);
+        bool CollectGitHubData,
+        bool SkipStorage);
 }
