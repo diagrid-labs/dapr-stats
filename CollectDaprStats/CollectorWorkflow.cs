@@ -69,6 +69,13 @@ namespace DaprStats
                     new DiscordInput(input.SkipStorage));
             }
 
+            if (input.CollectDiagridDashboardData)
+            {
+                await context.CallActivityAsync(
+                    nameof(GetDiagridDashboardData),
+                    new DiagridDashboardInput(input.SkipStorage));
+            }
+
             if (input.CollectGitHubData)
             {
                 const string orgName = "dapr";
@@ -101,5 +108,6 @@ namespace DaprStats
         string[] DockerHubImages,
         bool CollectDiscordData,
         bool CollectGitHubData,
+        bool CollectDiagridDashboardData,
         bool SkipStorage);
 }

@@ -50,6 +50,12 @@ CREATE TABLE dockerhub_images (
     pull_count BIGINT NOT NULL
 );
 
+CREATE TABLE diagrid_dashboard (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    download_count BIGINT NOT NULL
+);
+
 CREATE TABLE github_dapr (
     id SERIAL PRIMARY KEY,
     repo_name VARCHAR(255) NOT NULL,
