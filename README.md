@@ -20,10 +20,10 @@ The program is a .NET web service that's using Dapr workflow.
 
 The application requires the following secrets to be set as environment variables when running locally:
 
-- `DAPRSTATSGITHUBPAT=<GITHUB_PAT_VALUE>`
-- `DISCORDBOTTOKEN=<DISCORD_BOT_TOKEN_VALUE>`
-- `DAPRDISCORDSERVERID=<DISCORD_SERVER_ID_VALUE>`
-- `POSTGRESQLCONNECTION=<POSTGRES_CONNECTION_VALUE>`
+- `export DAPRSTATSGITHUBPAT=<GITHUB_PAT_VALUE>`
+- `export DISCORDBOTTOKEN=<DISCORD_BOT_TOKEN_VALUE>`
+- `export DAPRDISCORDSERVERID=<DISCORD_SERVER_ID_VALUE>`
+- `export POSTGRESQLCONNECTION=<POSTGRES_CONNECTION_VALUE>`
 
 ## Running the CollectDaprStats program
 

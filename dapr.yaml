@@ -10,3 +10,8 @@ apps:
     appLogDestination: fileAndConsole
     daprdLogDestination: fileAndConsole
     logLevel: debug
+    env:
+      POSTGRESQLCONNECTION: "${POSTGRESQLCONNECTION}"
+      DAPRSTATSGITHUBPAT: "${DAPRSTATSGITHUBPAT}"
+      DISCORDBOTTOKEN: "${DISCORDBOTTOKEN}"
+      DAPRDISCORDSERVERID: "${DAPRDISCORDSERVERID}"

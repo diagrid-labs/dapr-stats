@@ -15,7 +15,7 @@ Content-Type: application/json
     "PythonPackageNames" : ["dapr", "dapr-agents", "dapr-ext-workflow"],
     "CollectDiscordData" : true,
     "CollectGitHubData" : true,
-    "DockerHubImages" : ["daprio/daprd"],
+    "DockerHubImages" : ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
     "SkipStorage": false
 }
 
@@ -33,7 +33,7 @@ Content-Type: application/json
     "PythonPackageNames" : [],
     "CollectDiscordData" : false,
     "CollectGitHubData" : false,
-    "DockerHubImages" : ["daprio/daprd"],
+    "DockerHubImages" : [],
     "SkipStorage": false
 }
 
