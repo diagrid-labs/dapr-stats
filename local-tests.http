@@ -2,7 +2,7 @@
 @workflow_id={{$guid}}
 @currentDate={{$datetime iso8601}}
 ###
-### Start the CollectorWorkflow
+### Start a complete CollectorWorkflow
 ###
 // @name wfrequest
 POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
@@ -15,6 +15,25 @@ Content-Type: application/json
     "PythonPackageNames" : ["dapr", "dapr-agents", "dapr-ext-workflow"],
     "CollectDiscordData" : true,
     "CollectGitHubData" : true,
+    "DockerHubImages" : ["daprio/daprd"],
+    "SkipStorage": false
+}
+
+###
+### Start a partial CollectorWorkflow
+###
+// @name wfrequest
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : [],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "DockerHubImages" : ["daprio/daprd"],
     "SkipStorage": false
 }
 

@@ -194,17 +194,17 @@ namespace DaprStats
 
     public class GitHubDataOutput
     {
-        public string Repository { get; set; }
+        public required string Repository { get; set; }
         public int StarsTotalCount { get; set; }
         public int ForksTotalCount { get; set; }
         public int PullRequestCount { get; set; }
-        public string PullRequestUsers { get; set; }
+        public string? PullRequestUsers { get; set; }
         public int IssueCount { get; set; }
-        public string IssueUsers { get; set; }
+        public string? IssueUsers { get; set; }
         public int CommentCount { get; set; }
-        public string CommentUsers { get; set; }
+        public string? CommentUsers { get; set; }
         public int CommitCount { get; set; }
-        public string CommitUsers { get; set; }
+        public string? CommitUsers { get; set; }
         public DateTime CollectionDate { get; set; }
         public int DistinctUserCount { get; set; }
         public int CollectedOverNumberOfDays { get; set; }

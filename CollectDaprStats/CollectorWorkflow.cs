@@ -45,6 +45,23 @@ namespace DaprStats
                 await Task.WhenAll(getPythonPackageDataTasks);
             }
 
+            if (input.DockerHubImages.Length > 0)
+            {
+                var getDockerHubDataTasks = new List<Task>();
+                foreach (var dockerHubImage in input.DockerHubImages)
+                {
+                    // split the input string into organization and image name
+                    var parts = dockerHubImage.Split('/');
+                    if (parts.Length == 2)
+                    {
+                        getDockerHubDataTasks.Add(context.CallActivityAsync(
+                            nameof(GetDockerHubData),
+                            new DockerHubInput(parts[0], parts[1], input.SkipStorage)));
+                    }
+                }
+                await Task.WhenAll(getDockerHubDataTasks);
+            }
+
             if (input.CollectDiscordData)
             {
                 await context.CallActivityAsync(
@@ -81,6 +98,7 @@ namespace DaprStats
         string[] NuGetPackageNames,
         string[] NpmPackageNames,
         string[] PythonPackageNames,
+        string[] DockerHubImages,
         bool CollectDiscordData,
         bool CollectGitHubData,
         bool SkipStorage);
