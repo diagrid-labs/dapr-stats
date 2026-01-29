@@ -84,7 +84,7 @@ jobs:
               "CollectGitHubData": true,
               "CollectDiagridDashboardData": true,
               "DockerHubImages": ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
-              "SkipStorage": true
+              "SkipStorage": false
             }')
           
           echo "Response: $RESPONSE"
