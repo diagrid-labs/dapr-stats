@@ -1,0 +1,127 @@
+name: Run CollectorWorkflow
+
+on:
+  schedule:
+    # Run at 10:00 CET (09:00 UTC) on day 1 and 16 of each month
+    - cron: '0 9 1,16 * *'
+  workflow_dispatch:
+
+env:
+  POSTGRESQLCONNECTION: ${{ secrets.POSTGRESQLCONNECTION }}
+  DAPRSTATSGITHUBPAT: ${{ secrets.DAPRSTATSGITHUBPAT }}
+  DISCORDBOTTOKEN: ${{ secrets.DISCORDBOTTOKEN }}
+  DAPRDISCORDSERVERID: ${{ secrets.DAPRDISCORDSERVERID }}
+
+jobs:
+  run-workflow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install Dapr CLI
+        run: |
+          wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
+          dapr --version
+
+      - name: Initialize Dapr
+        run: dapr init
+
+      - name: Build .NET Project
+        run: dotnet build CollectDaprStats/CollectDaprStats.csproj
+
+      - name: Start Application with Dapr
+        run: |
+          dapr run -f . &
+          echo "Dapr multi-app started in background"
+
+      - name: Wait for Application Startup
+        run: |
+          echo "Waiting 2 minutes for application to start..."
+          sleep 120
+
+      - name: Generate Variables and Start CollectorWorkflow
+        id: start-workflow
+        run: |
+          # Generate random UUID for workflow_id
+          WORKFLOW_ID=$(uuidgen)
+          echo "workflow_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+          
+          # Generate current ISO 8601 timestamp
+          CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "current_date=$CURRENT_DATE" >> $GITHUB_OUTPUT
+          
+          echo "Starting workflow with ID: $WORKFLOW_ID"
+          echo "Collection date: $CURRENT_DATE"
+          
+          # Make POST request to start the workflow
+          RESPONSE=$(curl -s -X POST "http://localhost:3500/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID=$WORKFLOW_ID" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "CollectionDate": "'"$CURRENT_DATE"'",
+              "NuGetPackageNames": ["Dapr.Client", "Dapr.Workflow", "Dapr.AspNetCore", "Dapr.Extensions.Configuration", "Dapr.Actors", "Dapr.Messaging", "Dapr.Jobs", "CommunityToolkit.Aspire.Hosting.Dapr"],
+              "NpmPackageNames": ["@dapr/dapr"],
+              "PythonPackageNames": ["dapr", "dapr-agents", "dapr-ext-workflow"],
+              "CollectDiscordData": true,
+              "CollectGitHubData": true,
+              "CollectDiagridDashboardData": true,
+              "DockerHubImages": ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
+              "SkipStorage": true
+            }')
+          
+          echo "Response: $RESPONSE"
+          
+          # Extract instanceID from response
+          INSTANCE_ID=$(echo $RESPONSE | jq -r '.instanceID')
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "Instance ID: $INSTANCE_ID"
+
+      - name: Wait for Workflow Completion
+        run: |
+          echo "Waiting 3 minutes for workflow to complete..."
+          sleep 180
+
+      - name: Check Workflow Status
+        id: check-status
+        run: |
+          INSTANCE_ID="${{ steps.start-workflow.outputs.instance_id }}"
+          echo "Checking status for instance: $INSTANCE_ID"
+          
+          # Make GET request to check workflow status
+          RESPONSE=$(curl -s "http://localhost:3500/v1.0/workflows/dapr/$INSTANCE_ID")
+          echo "Status response: $RESPONSE"
+          
+          # Extract runtimeStatus from response
+          STATUS=$(echo $RESPONSE | jq -r '.runtimeStatus')
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "Workflow status: $STATUS"
+
+      - name: Evaluate Result
+        run: |
+          STATUS="${{ steps.check-status.outputs.status }}"
+          
+          if [ "$STATUS" = "COMPLETED" ]; then
+            echo "✅ Workflow completed successfully!"
+            exit 0
+          elif [ "$STATUS" = "FAILED" ]; then
+            echo "❌ Workflow failed!"
+            exit 1
+          else
+            echo "⚠️ Workflow status: $STATUS (not completed)"
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "Stopping Dapr processes..."
+          dapr stop --app-id collect-dapr-stats || true
+          pkill -f "dapr" || true
+          echo "Cleanup complete"
