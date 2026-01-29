@@ -39,13 +39,24 @@ jobs:
 
       - name: Start Application with Dapr
         run: |
+          set -e
           dapr run -f . &
-          echo "Dapr multi-app started in background"
+          DAPR_PID=$!
+          echo "dapr_pid=$DAPR_PID" >> $GITHUB_ENV
+          echo "Dapr multi-app started in background with PID: $DAPR_PID"
+          
+          # Wait a few seconds and verify the process is still running
+          sleep 15
+          if ! kill -0 $DAPR_PID 2>/dev/null; then
+            echo "❌ Dapr process failed to start or crashed immediately"
+            exit 1
+          fi
+          echo "✅ Dapr process is running"
 
       - name: Wait for Application Startup
         run: |
-          echo "Waiting 2 minutes for application to start..."
-          sleep 120
+          echo "Waiting 1 minutes for application to start..."
+          sleep 60
 
       - name: Generate Variables and Start CollectorWorkflow
         id: start-workflow
