@@ -111,6 +111,7 @@ ORDER BY
     collection_date,
     package_version;
 
+---
 
 CREATE OR REPLACE VIEW nuget_dapr_workflow_view AS
 
@@ -192,7 +193,9 @@ SELECT
     image_name,
     collection_date,
     EXTRACT(DAY FROM (collection_date - LAG(collection_date) OVER (PARTITION BY namespace, image_name ORDER BY collection_date)))::NUMERIC AS days_diff,
-    (pull_count - LAG(pull_count) OVER (PARTITION BY namespace, image_name ORDER BY collection_date)) AS pull_count_diff
+    (pull_count - LAG(pull_count) OVER (PARTITION BY namespace, image_name ORDER BY collection_date)) AS pull_count_diff,
+    ROUND((pull_count - LAG(pull_count) OVER (PARTITION BY namespace, image_name ORDER BY collection_date))::DECIMAL / 
+          EXTRACT(DAY FROM (collection_date - LAG(collection_date) OVER (PARTITION BY namespace, image_name ORDER BY collection_date)))::NUMERIC * 7) AS avg_weekly_diff
 FROM 
     dockerhub_images
 ORDER BY 
@@ -204,10 +207,60 @@ CREATE VIEW diagrid_dashboard_view AS
 SELECT 
     collection_date,
     EXTRACT(DAY FROM (collection_date - LAG(collection_date) OVER (ORDER BY collection_date)))::NUMERIC AS days_diff,
-    (download_count - LAG(download_count) OVER (ORDER BY collection_date)) AS download_count_diff
+    (download_count - LAG(download_count) OVER (ORDER BY collection_date)) AS download_count_diff,
+    ROUND((download_count - LAG(download_count) OVER (ORDER BY collection_date))::DECIMAL / 
+          EXTRACT(DAY FROM (collection_date - LAG(collection_date) OVER (ORDER BY collection_date)))::NUMERIC * 7) AS avg_weekly_diff
 FROM 
     diagrid_dashboard
 ORDER BY 
     collection_date
+
+---
+
+
+CREATE OR REPLACE VIEW nuget_dapr_actors_view AS
+
+SELECT
+  collection_date,
+  package_version,
+  days_diff,
+  round(
+    (
+      download_count - lag(download_count, 1, 0::bigint) OVER (
+        PARTITION BY
+          package_version
+        ORDER BY
+          collection_date
+      )
+    )::numeric / days_diff * 7::numeric
+  ) AS download_count_increment
+FROM
+  (
+    SELECT
+      nuget_dapr_client.collection_date::date AS collection_date,
+      nuget_dapr_client.package_version,
+      EXTRACT(
+        day
+        FROM
+          nuget_dapr_client.collection_date - lag(
+            nuget_dapr_client.collection_date,
+            1,
+            nuget_dapr_client.collection_date - '15 days'::interval
+          ) OVER (
+            PARTITION BY
+              nuget_dapr_client.package_version
+            ORDER BY
+              nuget_dapr_client.collection_date
+          )
+      ) AS days_diff,
+      nuget_dapr_client.download_count
+    FROM
+      nuget_dapr_client
+    WHERE
+      nuget_dapr_client.package_name::text = 'Dapr.Actors'::text
+  ) sub
+ORDER BY
+  collection_date,
+  package_version;
 
 ---
