@@ -185,3 +185,29 @@ FROM
     github_dapr
 
 ---
+
+CREATE VIEW dockerhub_images_view AS
+SELECT 
+    namespace,
+    image_name,
+    collection_date,
+    EXTRACT(DAY FROM (collection_date - LAG(collection_date) OVER (PARTITION BY namespace, image_name ORDER BY collection_date)))::NUMERIC AS days_diff,
+    (pull_count - LAG(pull_count) OVER (PARTITION BY namespace, image_name ORDER BY collection_date)) AS pull_count_diff
+FROM 
+    dockerhub_images
+ORDER BY 
+    collection_date
+
+---
+
+CREATE VIEW diagrid_dashboard_view AS
+SELECT 
+    collection_date,
+    EXTRACT(DAY FROM (collection_date - LAG(collection_date) OVER (ORDER BY collection_date)))::NUMERIC AS days_diff,
+    (download_count - LAG(download_count) OVER (ORDER BY collection_date)) AS download_count_diff
+FROM 
+    diagrid_dashboard
+ORDER BY 
+    collection_date
+
+---
