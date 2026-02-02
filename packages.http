@@ -49,5 +49,9 @@ GET https://hub.docker.com/v2/namespaces/{{namespace}}/repositories/{{repository
 
  @ghToken=
 ### GitHub Dapr image
-GET https://api.github.com/orgs/dapr/packages/container/dapr
+GET https://api.github.com/orgs/dapr/packages/container/daprd/versions
+Authorization: Bearer {{ghToken}} 
+
+### GitHub Diagrid dashboard image
+GET https://api.github.com/orgs/diagridio/packages/container/diagrid-dashboard
 Authorization: Bearer {{ghToken}} 
