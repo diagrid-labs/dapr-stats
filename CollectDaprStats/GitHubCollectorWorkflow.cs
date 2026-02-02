@@ -17,7 +17,9 @@ namespace DaprStats
                     new GitHubDataInput(
                         input.CollectionDate,
                         input.Organization,
-                        repository)
+                        repository,
+                        input.SkipStorage
+                        )
                 ));
             }
 
@@ -30,5 +32,6 @@ namespace DaprStats
     public record GitHubCollectorWorkflowInput(
         DateTime CollectionDate,
         string Organization,
-        string[] Repositories);
+        string[] Repositories,
+        bool SkipStorage);
 }

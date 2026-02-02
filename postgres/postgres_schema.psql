@@ -42,6 +42,20 @@ CREATE TABLE discord_dapr (
     member_count INT NOT NULL
 );
 
+CREATE TABLE dockerhub_images (
+    id SERIAL PRIMARY KEY,
+    namespace VARCHAR(255) NOT NULL,
+    image_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    pull_count BIGINT NOT NULL
+);
+
+CREATE TABLE diagrid_dashboard (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    download_count BIGINT NOT NULL
+);
+
 CREATE TABLE github_dapr (
     id SERIAL PRIMARY KEY,
     repo_name VARCHAR(255) NOT NULL,

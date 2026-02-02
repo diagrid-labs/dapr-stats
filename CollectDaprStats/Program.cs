@@ -34,6 +34,8 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<GetDiscordData>();
     options.RegisterActivity<GetGitHubRepoData>();
     options.RegisterActivity<GetGitHubReposForOrg>();
+    options.RegisterActivity<GetDockerHubData>();
+    options.RegisterActivity<GetDiagridDashboardData>();
 });
 
 // Dapr uses a random port for gRPC by default. If we don't know what that port

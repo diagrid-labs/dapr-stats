@@ -2,7 +2,7 @@
 @workflow_id={{$guid}}
 @currentDate={{$datetime iso8601}}
 ###
-### Start the CollectorWorkflow
+### Start a complete CollectorWorkflow
 ###
 // @name wfrequest
 POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
@@ -10,11 +10,33 @@ Content-Type: application/json
 
 {
     "CollectionDate" : "{{currentDate}}",
-    "CollectNuGetData" : true,
-    "CollectNpmData" : true,
-    "CollectPythonData" : true,
+    "NuGetPackageNames" : ["Dapr.Client", "Dapr.Workflow", "Dapr.AspNetCore", "Dapr.Extensions.Configuration", "Dapr.Actors", "Dapr.Messaging", "Dapr.Jobs", "CommunityToolkit.Aspire.Hosting.Dapr"],
+    "NpmPackageNames" : ["@dapr/dapr"],
+    "PythonPackageNames" : ["dapr", "dapr-agents", "dapr-ext-workflow"],
     "CollectDiscordData" : true,
-    "CollectGitHubData" : true
+    "CollectGitHubData" : true,
+    "CollectDiagridDashboardData" : true,
+    "DockerHubImages" : ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
+    "SkipStorage": false
+}
+
+###
+### Start a partial CollectorWorkflow
+###
+// @name wfrequest
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : [],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "CollectDiagridDashboardData" : false,
+    "DockerHubImages" : [],
+    "SkipStorage": false
 }
 
 ### Get the status of the workflow
