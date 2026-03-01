@@ -4,7 +4,7 @@ common:
 apps:
   - appID: collect-dapr-stats
     appDirPath: CollectDaprStats
-    appPort: 5065
+    appPort: 5066
     daprHTTPPort: 3500
     command: ["dotnet", "run"]
     appLogDestination: fileAndConsole

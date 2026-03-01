@@ -53,11 +53,6 @@ jobs:
           fi
           echo "✅ Dapr process is running"
 
-      - name: Wait for Application Startup
-        run: |
-          echo "Waiting 1 minutes for application to start..."
-          sleep 60
-
       - name: Generate Variables and Start CollectorWorkflow
         id: start-workflow
         run: |
