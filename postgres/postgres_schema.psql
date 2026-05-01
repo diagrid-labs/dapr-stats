@@ -218,6 +218,36 @@ ORDER BY
 ---
 
 
+CREATE OR REPLACE VIEW nuget_dapr_client_latest_packages_view AS
+SELECT DISTINCT package_name
+FROM nuget_dapr_client
+WHERE collection_date::date = (
+    SELECT MAX(collection_date::date) FROM nuget_dapr_client
+)
+ORDER BY package_name;
+
+---
+
+CREATE OR REPLACE VIEW npm_dapr_dapr_latest_packages_view AS
+SELECT DISTINCT package_name
+FROM npm_dapr_dapr
+WHERE collection_date::date = (
+    SELECT MAX(collection_date::date) FROM npm_dapr_dapr
+)
+ORDER BY package_name;
+
+---
+
+CREATE OR REPLACE VIEW python_dapr_latest_packages_view AS
+SELECT DISTINCT package_name
+FROM python_dapr
+WHERE collection_date::date = (
+    SELECT MAX(collection_date::date) FROM python_dapr
+)
+ORDER BY package_name;
+
+---
+
 CREATE OR REPLACE VIEW nuget_dapr_actors_view AS
 
 SELECT
