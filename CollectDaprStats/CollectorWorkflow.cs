@@ -10,39 +10,38 @@ namespace DaprStats
         {
             if (input.NuGetPackageNames.Length > 0)
             {
-                var getNugetPackageDataTasks = new List<Task>();
                 foreach (var nugetPackage in input.NuGetPackageNames)
                 {
-                    getNugetPackageDataTasks.Add(context.CallActivityAsync(
+                    await context.CallActivityAsync(
                         nameof(GetNuGetPackageData),
-                        new NuGetPackageInput(nugetPackage, input.SkipStorage)));
+                        new NuGetPackageInput(nugetPackage, input.SkipStorage));
+                    // Wait to prevent 429 error
+                    await context.CreateTimer(TimeSpan.FromSeconds(4), CancellationToken.None);
                 }
-                await Task.WhenAll(getNugetPackageDataTasks);
             }
 
             if (input.NpmPackageNames.Length > 0)
             {
-                var getNpmPackageDataTasks = new List<Task>();
                 foreach (var npmPackage in input.NpmPackageNames)
                 {
-                    getNpmPackageDataTasks.Add(context.CallActivityAsync(
+                    await context.CallActivityAsync(
                         nameof(GetNpmPackageData),
-                        new NpmPackageInput(npmPackage, input.SkipStorage)));
+                        new NpmPackageInput(npmPackage, input.SkipStorage));
+                    // Wait to prevent 429 error
+                    await context.CreateTimer(TimeSpan.FromSeconds(4), CancellationToken.None);
                 }
-                await Task.WhenAll(getNpmPackageDataTasks);
-                
             }
 
             if (input.PythonPackageNames.Length > 0)
             {
-                var getPythonPackageDataTasks = new List<Task>();
                 foreach (var pythonPackage in input.PythonPackageNames)
                 {
-                    getPythonPackageDataTasks.Add(context.CallActivityAsync(
+                    await context.CallActivityAsync(
                         nameof(GetPythonPackageData),
-                        new PythonPackageInput(pythonPackage, input.SkipStorage)));
+                        new PythonPackageInput(pythonPackage, input.SkipStorage));
+                    // Wait to prevent 429 error
+                    await context.CreateTimer(TimeSpan.FromSeconds(8), CancellationToken.None);
                 }
-                await Task.WhenAll(getPythonPackageDataTasks);
             }
 
             if (input.DockerHubImages.Length > 0)

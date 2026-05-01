@@ -37,7 +37,7 @@ namespace DaprStats
                 
                 // Extract download count from the page
                 // Looking for the downloads section in GitHub container registry page
-                var downloadNode = htmlDoc.DocumentNode.SelectSingleNode("//div[@class='lh-condensed d-flex flex-column flex-items-baseline pr-1']/h3");
+                var downloadNode = htmlDoc.DocumentNode.SelectSingleNode("//div[@class='lh-condensed d-flex flex-column flex-items-baseline tmp-pr-1']/h3");
                 
                 if (downloadNode == null)
                 {
