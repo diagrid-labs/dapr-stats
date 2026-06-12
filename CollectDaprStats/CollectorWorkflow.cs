@@ -16,7 +16,7 @@ namespace DaprStats
                         nameof(GetNuGetPackageData),
                         new NuGetPackageInput(nugetPackage, input.SkipStorage));
                     // Wait to prevent 429 error
-                    await context.CreateTimer(TimeSpan.FromSeconds(4), CancellationToken.None);
+                    await context.CreateTimer(TimeSpan.FromSeconds(5), CancellationToken.None);
                 }
             }
 
@@ -28,7 +28,7 @@ namespace DaprStats
                         nameof(GetNpmPackageData),
                         new NpmPackageInput(npmPackage, input.SkipStorage));
                     // Wait to prevent 429 error
-                    await context.CreateTimer(TimeSpan.FromSeconds(4), CancellationToken.None);
+                    await context.CreateTimer(TimeSpan.FromSeconds(5), CancellationToken.None);
                 }
             }
 
@@ -40,7 +40,7 @@ namespace DaprStats
                         nameof(GetPythonPackageData),
                         new PythonPackageInput(pythonPackage, input.SkipStorage));
                     // Wait to prevent 429 error
-                    await context.CreateTimer(TimeSpan.FromSeconds(8), CancellationToken.None);
+                    await context.CreateTimer(TimeSpan.FromSeconds(10), CancellationToken.None);
                 }
             }
 
