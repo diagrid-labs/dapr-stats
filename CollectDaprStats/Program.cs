@@ -24,6 +24,7 @@ builder.Services.AddSingleton<IGitHubClient>(_ => {
 builder.Services.AddSingleton<DiscordRestClient>();
 builder.Services.AddSingleton(daprClient);
 builder.Services.AddSingleton<PostgresOutput>();
+builder.Services.AddSingleton<PackageDataChecker>();
 builder.Services.AddDaprWorkflow(options =>
 {
     options.RegisterWorkflow<CollectorWorkflow>();
@@ -31,6 +32,9 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<GetNuGetPackageData>();
     options.RegisterActivity<GetNpmPackageData>();
     options.RegisterActivity<GetPythonPackageData>();
+    options.RegisterActivity<CheckNuGetPackageData>();
+    options.RegisterActivity<CheckNpmPackageData>();
+    options.RegisterActivity<CheckPythonPackageData>();
     options.RegisterActivity<GetDiscordData>();
     options.RegisterActivity<GetGitHubRepoData>();
     options.RegisterActivity<GetGitHubReposForOrg>();

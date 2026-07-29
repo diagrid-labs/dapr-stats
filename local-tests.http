@@ -42,3 +42,81 @@ Content-Type: application/json
 ### Get the status of the workflow
 @wfresponse={{wfrequest.response.body.instanceID}}
 GET {{dapr_url}}/v1.0/workflows/dapr/{{wfresponse}}
+
+###
+### Read the latest stored Python packages directly through the binding.
+### Used to confirm the shape of the `query` response.
+###
+POST {{dapr_url}}/v1.0/bindings/daprstats
+Content-Type: application/json
+
+{
+    "operation": "query",
+    "metadata": {
+        "sql": "select package_name, collection_date from python_dapr_latest_packages_view"
+    }
+}
+
+###
+### Python packages only, with storage. Exercises the
+### GetPythonPackageData -> CheckPythonPackageData -> Sleep loop.
+###
+// @name pythononly
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : ["dapr", "dapr-agents", "dapr-ext-workflow"],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "CollectDiagridDashboardData" : false,
+    "DockerHubImages" : [],
+    "SkipStorage": false
+}
+
+###
+### Python packages with SkipStorage. The workflow must skip the check entirely,
+### so this completes in seconds with no 5-minute sleep.
+### Note: GetPythonPackageData ignores SkipStorage and inserts anyway (a
+### pre-existing quirk that npm and NuGet do not share), so rows are still
+### written. What is being verified here is that the check is skipped.
+###
+// @name pythonskipstorage
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : ["dapr", "dapr-agents", "dapr-ext-workflow"],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "CollectDiagridDashboardData" : false,
+    "DockerHubImages" : [],
+    "SkipStorage": true
+}
+
+###
+### A package name that does not exist upstream. GetPythonPackageData returns
+### false without inserting, so the check reports it missing on all three passes
+### and the loop exits after two 5-minute sleeps (~11 minutes total).
+###
+// @name pythonmissing
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : ["dapr", "this-package-does-not-exist-xyz"],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "CollectDiagridDashboardData" : false,
+    "DockerHubImages" : [],
+    "SkipStorage": false
+}

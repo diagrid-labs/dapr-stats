@@ -22,7 +22,10 @@ jobs:
             dotnet-version: '9.0.x'
 
         - name: Restore dependencies
-          run: dotnet restore ./CollectDaprStats/CollectDaprStats.csproj
+          run: dotnet restore dapr-stats.sln
 
         - name: Build solution
-          run: dotnet build ./CollectDaprStats/CollectDaprStats.csproj --configuration Release
+          run: dotnet build dapr-stats.sln --configuration Release --no-restore
+
+        - name: Run unit tests
+          run: dotnet test dapr-stats.sln --configuration Release --no-build --verbosity normal
