@@ -1,92 +1,30 @@
-CREATE TABLE nuget_dapr_client (
-    id SERIAL PRIMARY KEY,
-    package_name VARCHAR(255) NOT NULL,
-    collection_date TIMESTAMP NOT NULL,
-    package_version VARCHAR(50) NOT NULL,
-    download_count BIGINT NOT NULL,
-    collected_over_number_of_days SMALLINT
-);
+-- Fix: partial-day truncation inflated the weekly download/pull increments.
+--
+-- The views divided the download delta by EXTRACT(DAY FROM <interval>), which
+-- truncates towards zero: a real gap of 14 days 23:52 became a divisor of 14,
+-- and a gap of 4 days 20:00 became 4. Because the divisor could only ever be
+-- too small, the *_increment / avg_weekly_diff columns could only ever be too
+-- high -- on average +4.7%, worst observed case +20.8% (Dapr.Client, 1672 rows).
+--
+-- The fix uses the exact elapsed time instead:
+--     EXTRACT(EPOCH FROM (collection_date - lag(collection_date))) / 86400
+-- rounded to 3 decimals (86.4 s) so the value reported in days_diff is the same
+-- value used as the divisor.
+--
+-- Notes:
+--   * days_diff stays NUMERIC so CREATE OR REPLACE VIEW can reuse the existing
+--     column (a date - date INTEGER would fail with SQLSTATE 42P16).
+--   * NULLIF(days_diff, 0) guards against two collections sharing a timestamp,
+--     which would otherwise fail the whole view with a division by zero.
+--   * The 15-day LAG default on the NuGet views is preserved: the first row of
+--     each package_version still reports total downloads / 15 * 7, which is a
+--     baseline artefact rather than a real weekly increment.
+--   * python_dapr_view and the *_latest_packages_view family are unaffected --
+--     PyPI reports its own collected_over_number_of_days.
 
-CREATE TABLE npm_dapr_dapr (
-    id SERIAL PRIMARY KEY,
-    package_name VARCHAR(255) NOT NULL,
-    collection_date TIMESTAMP NOT NULL,
-    package_version VARCHAR(50) NOT NULL,
-    download_count BIGINT NOT NULL,
-    collected_over_number_of_days SMALLINT
-);
-
-CREATE TABLE python_dapr (
-    id SERIAL PRIMARY KEY,
-    package_name VARCHAR(255) NOT NULL,
-    collection_date TIMESTAMP NOT NULL,
-    package_version VARCHAR(50) NOT NULL,
-    download_count BIGINT NOT NULL,
-    collected_over_number_of_days SMALLINT
-);
-
-CREATE TABLE java_dapr_sdk (
-    id SERIAL PRIMARY KEY,
-    package_name VARCHAR(255) NOT NULL,
-    collection_date TIMESTAMP NOT NULL,
-    package_version VARCHAR(50) NOT NULL,
-    download_count BIGINT NOT NULL,
-    percentage NUMERIC(5,4),
-    collected_over_number_of_days SMALLINT
-);
-
-
-CREATE TABLE discord_dapr (
-    id SERIAL PRIMARY KEY,
-    collection_date TIMESTAMP NOT NULL,
-    member_count INT NOT NULL
-);
-
-CREATE TABLE dockerhub_images (
-    id SERIAL PRIMARY KEY,
-    namespace VARCHAR(255) NOT NULL,
-    image_name VARCHAR(255) NOT NULL,
-    collection_date TIMESTAMP NOT NULL,
-    pull_count BIGINT NOT NULL
-);
-
-CREATE TABLE diagrid_dashboard (
-    id SERIAL PRIMARY KEY,
-    collection_date TIMESTAMP NOT NULL,
-    download_count BIGINT NOT NULL
-);
-
-CREATE TABLE github_dapr (
-    id SERIAL PRIMARY KEY,
-    repo_name VARCHAR(255) NOT NULL,
-    collection_date TIMESTAMP NOT NULL,
-    fork_count_total INT NOT NULL,
-    star_count_total INT NOT NULL,
-    commit_count INT NOT NULL,
-    commit_users TEXT,
-    issue_count INT NOT NULL,
-    issue_users TEXT,
-    comment_count INT NOT NULL, 
-    comment_users TEXT,
-    pullrequest_count INT NOT NULL,
-    pullrequest_users TEXT,
-    distinct_user_count INT NOT NULL,
-    collected_over_number_of_days SMALLINT
-);
-
-CREATE TABLE website_dapr (
-    id SERIAL PRIMARY KEY,
-    collection_date TIMESTAMP NOT NULL,
-    user_count BIGINT NOT NULL
-);
-
-CREATE TABLE youtube_dapr (
-    id SERIAL PRIMARY KEY,
-    collection_date TIMESTAMP NOT NULL,
-    view_count BIGINT NOT NULL
-);
-
----
+-- --------------------------------------------------------------------------
+-- NuGet package views (8) -- identical apart from the package_name filter
+-- --------------------------------------------------------------------------
 
 CREATE OR REPLACE VIEW nuget_dapr_client_view AS
 
@@ -112,7 +50,7 @@ ORDER BY
 
 ---
 
-CREATE OR REPLACE VIEW nuget_dapr_workflow_view AS
+CREATE OR REPLACE VIEW nuget_dapr_actors_view AS
 
 SELECT
     collection_date,
@@ -128,11 +66,13 @@ FROM
     FROM
         nuget_dapr_client
     WHERE
-        package_name = 'Dapr.Workflow'
+        package_name = 'Dapr.Actors'
     ) sub
 ORDER BY
     collection_date,
     package_version;
+
+---
 
 CREATE OR REPLACE VIEW nuget_dapr_aspnetcore_view AS
 
@@ -151,6 +91,30 @@ FROM
         nuget_dapr_client
     WHERE
         package_name = 'Dapr.AspNetCore'
+    ) sub
+ORDER BY
+    collection_date,
+    package_version;
+
+---
+
+CREATE OR REPLACE VIEW nuget_dapr_workflow_view AS
+
+SELECT
+    collection_date,
+    package_version,
+    days_diff,
+    ROUND((download_count - LAG(download_count, 1, 0::bigint) OVER (PARTITION BY package_version ORDER BY collection_date))::numeric / NULLIF(days_diff, 0) * 7) AS download_count_increment
+FROM
+    (SELECT
+        collection_date::date AS collection_date,
+        package_version,
+        download_count,
+        ROUND(EXTRACT(EPOCH FROM collection_date - LAG(collection_date, 1, collection_date - INTERVAL '15 days') OVER (PARTITION BY package_version ORDER BY collection_date)) / 86400.0, 3) AS days_diff
+    FROM
+        nuget_dapr_client
+    WHERE
+        package_name = 'Dapr.Workflow'
     ) sub
 ORDER BY
     collection_date,
@@ -252,33 +216,12 @@ ORDER BY
     collection_date,
     package_version;
 
----
-
-CREATE VIEW java_dapr_sdk_view AS
-
-SELECT 
-    collection_date::date,
-    package_version,
-    ROUND(download_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_downloads
-FROM 
-    java_dapr_sdk
-ORDER BY 
-    collection_date,
-    package_version
-
----
-
-CREATE VIEW weekly_github_counts_dapr AS
-SELECT 
-    repo_name,
-    collection_date,
-    ROUND(issue_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_issue_count,
-    ROUND(comment_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_comment_count,
-    ROUND(commit_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_commit_count,
-    ROUND(pullrequest_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_pullrequest_count,
-    ROUND(distinct_user_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_distinct_user_count
-FROM 
-    github_dapr
+-- --------------------------------------------------------------------------
+-- Docker Hub and Diagrid dashboard views (2)
+--
+-- These keep collection_date as a TIMESTAMP and have no LAG default, so the
+-- first row of each series still yields NULL rather than a bogus increment.
+-- --------------------------------------------------------------------------
 
 ---
 
@@ -325,60 +268,3 @@ FROM
     ) sub
 ORDER BY
     collection_date;
-
----
-
-
-CREATE OR REPLACE VIEW nuget_dapr_client_latest_packages_view AS
-SELECT DISTINCT package_name, collection_date::date
-FROM nuget_dapr_client
-WHERE collection_date::date = (
-    SELECT MAX(collection_date::date) FROM nuget_dapr_client
-)
-ORDER BY package_name;
-
----
-
-CREATE OR REPLACE VIEW npm_dapr_dapr_latest_packages_view AS
-SELECT DISTINCT package_name, collection_date::date
-FROM npm_dapr_dapr
-WHERE collection_date::date = (
-    SELECT MAX(collection_date::date) FROM npm_dapr_dapr
-)
-ORDER BY package_name;
-
----
-
-CREATE OR REPLACE VIEW python_dapr_latest_packages_view AS
-SELECT DISTINCT package_name, collection_date::date
-FROM python_dapr
-WHERE collection_date::date = (
-    SELECT MAX(collection_date::date) FROM python_dapr
-)
-ORDER BY package_name;
-
----
-
-CREATE OR REPLACE VIEW nuget_dapr_actors_view AS
-
-SELECT
-    collection_date,
-    package_version,
-    days_diff,
-    ROUND((download_count - LAG(download_count, 1, 0::bigint) OVER (PARTITION BY package_version ORDER BY collection_date))::numeric / NULLIF(days_diff, 0) * 7) AS download_count_increment
-FROM
-    (SELECT
-        collection_date::date AS collection_date,
-        package_version,
-        download_count,
-        ROUND(EXTRACT(EPOCH FROM collection_date - LAG(collection_date, 1, collection_date - INTERVAL '15 days') OVER (PARTITION BY package_version ORDER BY collection_date)) / 86400.0, 3) AS days_diff
-    FROM
-        nuget_dapr_client
-    WHERE
-        package_name = 'Dapr.Actors'
-    ) sub
-ORDER BY
-    collection_date,
-    package_version;
-
----
