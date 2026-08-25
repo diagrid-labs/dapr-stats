@@ -23,7 +23,7 @@
 --     PyPI reports its own collected_over_number_of_days.
 
 -- --------------------------------------------------------------------------
--- NuGet package views (8) -- identical apart from the package_name filter
+-- NuGet package views (9) -- identical apart from the package_name filter
 -- --------------------------------------------------------------------------
 
 CREATE OR REPLACE VIEW nuget_dapr_client_view AS
@@ -211,6 +211,30 @@ FROM
         nuget_dapr_client
     WHERE
         package_name = 'CommunityToolkit.Aspire.Hosting.Dapr'
+    ) sub
+ORDER BY
+    collection_date,
+    package_version;
+
+---
+
+CREATE OR REPLACE VIEW nuget_diagrid_agentframework_view AS
+
+SELECT
+    collection_date,
+    package_version,
+    days_diff,
+    ROUND((download_count - LAG(download_count, 1, 0::bigint) OVER (PARTITION BY package_version ORDER BY collection_date))::numeric / NULLIF(days_diff, 0) * 7) AS download_count_increment
+FROM
+    (SELECT
+        collection_date::date AS collection_date,
+        package_version,
+        download_count,
+        ROUND(EXTRACT(EPOCH FROM collection_date - LAG(collection_date, 1, collection_date - INTERVAL '15 days') OVER (PARTITION BY package_version ORDER BY collection_date)) / 86400.0, 3) AS days_diff
+    FROM
+        nuget_dapr_client
+    WHERE
+        package_name = 'Diagrid.AI.Microsoft.AgentFramework'
     ) sub
 ORDER BY
     collection_date,
