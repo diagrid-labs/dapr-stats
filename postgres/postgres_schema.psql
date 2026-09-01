@@ -1,10 +1,13 @@
+-- No collected_over_number_of_days here, unlike npm_dapr_dapr and python_dapr:
+-- NuGet reports a cumulative total per version rather than downloads over a
+-- window, so GetNuGetPackageData inserts four columns and the views derive the
+-- rate from the gap between collection_date values instead.
 CREATE TABLE nuget_dapr_client (
     id SERIAL PRIMARY KEY,
     package_name VARCHAR(255) NOT NULL,
     collection_date TIMESTAMP NOT NULL,
     package_version VARCHAR(50) NOT NULL,
-    download_count BIGINT NOT NULL,
-    collected_over_number_of_days SMALLINT
+    download_count BIGINT NOT NULL
 );
 
 CREATE TABLE npm_dapr_dapr (
@@ -40,6 +43,13 @@ CREATE TABLE discord_dapr (
     id SERIAL PRIMARY KEY,
     collection_date TIMESTAMP NOT NULL,
     member_count INT NOT NULL
+);
+
+CREATE TABLE discord_visitors (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    weekly_visitors INT NOT NULL,
+    monthly_visitors INT NOT NULL
 );
 
 CREATE TABLE dockerhub_images (
@@ -80,10 +90,42 @@ CREATE TABLE website_dapr (
     user_count BIGINT NOT NULL
 );
 
+CREATE TABLE website_dapr_monthly (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    user_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT
+);
+
 CREATE TABLE youtube_dapr (
     id SERIAL PRIMARY KEY,
     collection_date TIMESTAMP NOT NULL,
     view_count BIGINT NOT NULL
+);
+
+CREATE TABLE youtube_dapr_monthly (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    view_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT
+);
+
+-- One-off table of 2024 growth projections, filled in by hand rather than by a
+-- collector. Kept for the historical comparison in the Grafana dashboard.
+CREATE TABLE projections_2024 (
+    id SERIAL PRIMARY KEY,
+    collection_date TIMESTAMP NOT NULL,
+    day INT NOT NULL,
+    discord_member_count INT NOT NULL,
+    github_stars INT NOT NULL,
+    github_contributors INT NOT NULL,
+    github_committers INT NOT NULL,
+    net_sdk_weekly INT NOT NULL,
+    js_sdk_weekly INT NOT NULL,
+    python_sdk_weekly INT NOT NULL,
+    java_sdk_weekly INT NOT NULL,
+    website_views INT NOT NULL,
+    youtube_views INT NOT NULL
 );
 
 CREATE TABLE datadog_rum (
@@ -399,6 +441,61 @@ WHERE collection_date::date = (
     SELECT MAX(collection_date::date) FROM python_dapr
 )
 ORDER BY package_name;
+
+---
+
+-- One view per PyPI package. pypistats reports downloads over a window rather
+-- than a cumulative total, so the weekly rate comes straight from the row and
+-- needs no comparison with the previous collection.
+
+CREATE OR REPLACE VIEW python_dapr_view AS
+
+SELECT
+    collection_date,
+    package_version,
+    download_count,
+    collected_over_number_of_days,
+    CEIL(download_count::numeric / collected_over_number_of_days::numeric * 7::numeric) AS weekly_download_count
+FROM
+    python_dapr
+WHERE
+    package_name = 'dapr'
+ORDER BY
+    collection_date;
+
+---
+
+CREATE OR REPLACE VIEW python_dapr_agents_view AS
+
+SELECT
+    collection_date,
+    package_version,
+    download_count,
+    collected_over_number_of_days,
+    CEIL(download_count::numeric / collected_over_number_of_days::numeric * 7::numeric) AS weekly_download_count
+FROM
+    python_dapr
+WHERE
+    package_name = 'dapr-agents'
+ORDER BY
+    collection_date;
+
+---
+
+CREATE OR REPLACE VIEW python_dapr_ext_workflow_view AS
+
+SELECT
+    collection_date,
+    package_version,
+    download_count,
+    collected_over_number_of_days,
+    CEIL(download_count::numeric / collected_over_number_of_days::numeric * 7::numeric) AS weekly_download_count
+FROM
+    python_dapr
+WHERE
+    package_name = 'dapr-ext-workflow'
+ORDER BY
+    collection_date;
 
 ---
 

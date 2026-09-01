@@ -6,24 +6,29 @@ on:
     - cron: '0 9 * * 1'
   workflow_dispatch:
     # NOTE: workflow_dispatch allows at most 10 inputs.
-    # Input defaults only apply to manual runs; scheduled runs fall back to the
-    # DEFAULT_* / FIXED_* env values below, so keep the two in sync.
+    #
+    # The package lists take `all` / `none` / an explicit list rather than being
+    # prefilled with the default list. Clearing a text input does NOT submit an
+    # empty value: GitHub substitutes the input's default, so an emptied field is
+    # indistinguishable from an omitted one and silently collected everything.
+    # `none` is a value GitHub cannot override, so that is how a list is skipped.
+    # The lists themselves live in the DEFAULT_* env values below, once.
     inputs:
       nuget_packages:
-        description: 'NuGet packages, comma-separated (empty = skip NuGet)'
+        description: 'NuGet: all | none | comma-separated names (all = Dapr.Client, Dapr.Workflow, Dapr.AspNetCore, Dapr.Extensions.Configuration, Dapr.Actors, Dapr.Messaging, Dapr.Jobs, CommunityToolkit.Aspire.Hosting.Dapr, Diagrid.AI.Microsoft.AgentFramework)'
         required: false
         type: string
-        default: 'Dapr.Client,Dapr.Workflow,Dapr.AspNetCore,Dapr.Extensions.Configuration,Dapr.Actors,Dapr.Messaging,Dapr.Jobs,CommunityToolkit.Aspire.Hosting.Dapr,Diagrid.AI.Microsoft.AgentFramework'
+        default: 'all'
       npm_packages:
-        description: 'npm packages, comma-separated (empty = skip npm)'
+        description: 'npm: all | none | comma-separated names (all = @dapr/dapr)'
         required: false
         type: string
-        default: '@dapr/dapr'
+        default: 'all'
       python_packages:
-        description: 'PyPI packages, comma-separated (empty = skip PyPI)'
+        description: 'PyPI: all | none | comma-separated names (all = dapr, dapr-agents, dapr-ext-workflow, diagrid)'
         required: false
         type: string
-        default: 'dapr,dapr-agents,dapr-ext-workflow,diagrid'
+        default: 'all'
       collect_dockerhub:
         description: 'Collect Docker Hub image pulls'
         required: false
@@ -69,7 +74,8 @@ env:
   DATADOGAPPKEY: ${{ secrets.DATADOGAPPKEY }}
   SCARF_DAPR_API_TOKEN: ${{ secrets.SCARF_DAPR_API_TOKEN }}
 
-  # Used by scheduled runs, where workflow_dispatch input defaults do not apply.
+  # The one place the package lists are defined. Used by scheduled runs and by
+  # a manual run that leaves a package input set to `all`.
   DEFAULT_NUGET_PACKAGES: 'Dapr.Client,Dapr.Workflow,Dapr.AspNetCore,Dapr.Extensions.Configuration,Dapr.Actors,Dapr.Messaging,Dapr.Jobs,CommunityToolkit.Aspire.Hosting.Dapr,Diagrid.AI.Microsoft.AgentFramework'
   DEFAULT_NPM_PACKAGES: '@dapr/dapr'
   DEFAULT_PYTHON_PACKAGES: 'dapr,dapr-agents,dapr-ext-workflow,diagrid'
@@ -139,15 +145,27 @@ jobs:
         run: |
           set -euo pipefail
 
-          # On a manual run the submitted value always wins, including a
-          # deliberately cleared list or an unchecked box. Other triggers carry
-          # no inputs at all, so they use the scheduled default.
+          # Booleans only. An unchecked box submits a real `false`, which GitHub
+          # does not replace with the input's default, so a manual run's value
+          # always wins. Other triggers carry no inputs and use the default.
           pick() {
             if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
               printf '%s' "$1"
             else
               printf '%s' "$2"
             fi
+          }
+
+          # Package lists. Text inputs cannot use the same trick: clearing a
+          # field makes GitHub substitute the input's default, so an empty value
+          # can never mean "skip". `none` is explicit and cannot be overridden.
+          #   $1 = submitted value, $2 = the standard list for this ecosystem
+          resolve_list() {
+            case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+              ''|all) printf '%s' "$2" ;;
+              none)   printf '%s' '' ;;
+              *)      printf '%s' "$1" ;;
+            esac
           }
 
           norm_bool() {
@@ -162,9 +180,9 @@ jobs:
               | map(select(length > 0))'
           }
 
-          NUGET_CSV=$(pick "$IN_NUGET_PACKAGES" "$DEFAULT_NUGET_PACKAGES")
-          NPM_CSV=$(pick "$IN_NPM_PACKAGES" "$DEFAULT_NPM_PACKAGES")
-          PYTHON_CSV=$(pick "$IN_PYTHON_PACKAGES" "$DEFAULT_PYTHON_PACKAGES")
+          NUGET_CSV=$(resolve_list "$IN_NUGET_PACKAGES" "$DEFAULT_NUGET_PACKAGES")
+          NPM_CSV=$(resolve_list "$IN_NPM_PACKAGES" "$DEFAULT_NPM_PACKAGES")
+          PYTHON_CSV=$(resolve_list "$IN_PYTHON_PACKAGES" "$DEFAULT_PYTHON_PACKAGES")
 
           COLLECT_DOCKERHUB=$(norm_bool "$(pick "$IN_COLLECT_DOCKERHUB" true)")
           COLLECT_DATADOG=$(norm_bool "$(pick "$IN_COLLECT_DATADOG" true)")

@@ -61,7 +61,8 @@ These are all verified in the current code, not guesses:
 - **Scarf writes are delete-then-insert per ISO week**, which is what makes re-running a week idempotent. Any change to that write path needs the same guarantee.
 - **A full run is slow by design.** The package loops retry up to three times with a five-minute backoff between attempts, so collection can take ~25 minutes. The CI job polls with a 25-minute deadline inside a 30-minute job timeout; anything that lengthens the retry path needs both raised.
 - **`workflow_dispatch` allows at most 10 inputs.** `run-workflow.yaml` is exactly at the cap, which is why the Docker Hub images, Datadog services and Scarf pixel IDs are `FIXED_*` env values behind checkboxes rather than editable fields.
-- **Input defaults do not apply to scheduled runs.** GitHub leaves `inputs.*` empty for `schedule`, so `run-workflow.yaml` keeps a `DEFAULT_*` copy of each package list. Change a default and you must change both.
+- **An emptied text input comes back as its default.** GitHub substitutes the `default:` when a `workflow_dispatch` text input is submitted empty, so a cleared field cannot be told apart from an omitted one. This once caused a manual run to collect every package after the fields had deliberately been emptied, duplicating a day of package data. The package inputs therefore take `all` / `none` / an explicit list, since `none` is a value GitHub cannot override. Boolean inputs are not affected: an unchecked box submits a real `false`.
+- **Input defaults do not apply to scheduled runs at all.** GitHub leaves `inputs.*` empty for `schedule`, which the `all` keyword handles: empty resolves the same way as `all`, to the `DEFAULT_*` env value.
 
 ## Database
 

@@ -60,9 +60,9 @@ The [Run CollectorWorkflow](.github/workflows/run-workflow.yaml) workflow runs o
 
 | Input | Type | Default | Effect |
 |---|---|---|---|
-| `nuget_packages` | comma-separated list | the nine `Dapr.*`, `CommunityToolkit.*` and `Diagrid.*` packages | Packages to collect NuGet downloads for |
-| `npm_packages` | comma-separated list | `@dapr/dapr` | Packages to collect npm downloads for |
-| `python_packages` | comma-separated list | `dapr,dapr-agents,dapr-ext-workflow,diagrid` | Packages to collect PyPI downloads for |
+| `nuget_packages` | `all` / `none` / list | `all` | NuGet downloads: the nine standard packages, nothing, or the names you give |
+| `npm_packages` | `all` / `none` / list | `all` | npm downloads: `@dapr/dapr`, nothing, or the names you give |
+| `python_packages` | `all` / `none` / list | `all` | PyPI downloads: the four standard packages, nothing, or the names you give |
 | `collect_dockerhub` | checkbox | on | Docker Hub pulls for the `daprio/*` images |
 | `collect_datadog` | checkbox | on | Datadog RUM views and users |
 | `collect_scarf` | checkbox | on | Scarf building block page views and company visits |
@@ -73,7 +73,7 @@ The [Run CollectorWorkflow](.github/workflows/run-workflow.yaml) workflow runs o
 
 A few things worth knowing:
 
-- **Clearing a package field skips that ecosystem entirely.** The workflow only starts a collector when its list is non-empty, so emptying `nuget_packages` is how you turn NuGet collection off. Entries may be padded with spaces; they are trimmed.
-- **Unchecking a box has the same effect** for the sources whose lists are not exposed as inputs. `workflow_dispatch` allows at most 10 inputs, so the Docker Hub images, Datadog RUM services and Scarf pixel IDs live in the `FIXED_*` variables in the workflow's `env` block, and the checkboxes switch those lists on and off. Change the values there when an image or pixel is added.
-- **Scheduled runs always use the defaults.** GitHub does not apply `workflow_dispatch` input defaults to `schedule` runs, so the workflow falls back to its `DEFAULT_*` and `FIXED_*` env values. When you change a default for the weekly run, update both the input's `default:` and the matching `DEFAULT_*` variable.
+- **Type `none` to skip an ecosystem — do not clear the field.** Clearing a text input does not submit an empty value: GitHub substitutes the input's default, so an emptied field is indistinguishable from an omitted one and collects everything. `none` is a value GitHub cannot override. Entries in an explicit list may be padded with spaces; they are trimmed, and `all` / `none` are case-insensitive.
+- **Unchecking a box is reliable**, because an unchecked box submits a real `false`. This is why the other six sources are checkboxes: `workflow_dispatch` allows at most 10 inputs, so the Docker Hub images, Datadog RUM services and Scarf pixel IDs live in the `FIXED_*` variables in the workflow's `env` block and the checkboxes switch those lists on and off. Change the values there when an image or pixel is added.
+- **The package lists are defined once**, in the `DEFAULT_*` env values. Both a scheduled run and a manual run left at `all` read them from there, so there is nothing to keep in sync.
 - The resolved workflow input is printed to the run log and to the run summary, so you can confirm what a manual run actually collected.
