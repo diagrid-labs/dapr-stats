@@ -22,9 +22,14 @@
 -- (The evening run only managed one Python row before pypistats rate-limited it;
 -- the morning run has all four, so the day stays complete.)
 --
+-- APPLIED 2026-09-01: 247 / 16 / 1 rows deleted, leaving 247 / 18 / 4 for the day.
+-- The deleted rows were exported to JSON first; ids were contiguous per table
+-- (nuget 6396-6642, npm 1169-1184, python 165), confirming the window caught
+-- exactly one run's inserts. Kept here as a record of the remediation.
+--
 -- Note: Neon's HTTP /sql endpoint takes one statement per request and cannot hold
--- a transaction open. Run this in the Neon SQL editor or psql, or send the
--- statements individually and skip the BEGIN/COMMIT.
+-- a transaction open. Run this in the Neon SQL editor or psql. Over HTTP, use the
+-- single-statement CTE in step 2b instead, which is atomic on its own.
 
 
 -- 1. Preview. Confirm these counts before deleting anything.
@@ -62,6 +67,30 @@ WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
   AND collection_date <  TIMESTAMP '2026-09-01 18:00:00';
 
 COMMIT;
+
+
+-- 2b. The same delete as one atomic statement, for clients that cannot hold a
+-- transaction open (Neon's HTTP /sql endpoint). This is the form that was run.
+
+WITH deleted_nuget AS (
+  DELETE FROM nuget_dapr_client
+  WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+    AND collection_date <  TIMESTAMP '2026-09-01 18:00:00'
+  RETURNING 1
+), deleted_npm AS (
+  DELETE FROM npm_dapr_dapr
+  WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+    AND collection_date <  TIMESTAMP '2026-09-01 18:00:00'
+  RETURNING 1
+), deleted_python AS (
+  DELETE FROM python_dapr
+  WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+    AND collection_date <  TIMESTAMP '2026-09-01 18:00:00'
+  RETURNING 1
+)
+SELECT (SELECT count(*) FROM deleted_nuget)  AS nuget_deleted,
+       (SELECT count(*) FROM deleted_npm)    AS npm_deleted,
+       (SELECT count(*) FROM deleted_python) AS python_deleted;
 
 
 -- 3. Verify. Every table should report exactly one collection for the day, and
