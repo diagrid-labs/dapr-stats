@@ -1,0 +1,83 @@
+-- Remove the duplicate NuGet, npm and Python package rows written by the manual
+-- CollectorWorkflow run of 2026-09-01 17:21 UTC (GitHub Actions run 33537200774).
+--
+-- That run was dispatched with the three package fields deliberately emptied, but
+-- GitHub substitutes a text input's default when it is submitted empty, so the run
+-- collected every package a second time. Packages had already been collected that
+-- morning by the 08:26 run. The workflow has since been changed to take
+-- `all` / `none` / an explicit list so that skipping is expressible.
+--
+-- Only the three package tables are affected. The same run also collected Scarf
+-- data, which is written delete-then-insert per ISO week and is therefore
+-- idempotent - leave it alone.
+--
+-- The two collections are cleanly separated in time, so a window is enough to
+-- identify the rows:
+--
+--            first row              last row
+--   morning  2026-09-01 08:27:01    2026-09-01 08:32:42   <- keep
+--   evening  2026-09-01 17:21:54    2026-09-01 17:23:11   <- delete
+--
+-- Expected to delete: 247 nuget_dapr_client, 16 npm_dapr_dapr, 1 python_dapr.
+-- (The evening run only managed one Python row before pypistats rate-limited it;
+-- the morning run has all four, so the day stays complete.)
+--
+-- Note: Neon's HTTP /sql endpoint takes one statement per request and cannot hold
+-- a transaction open. Run this in the Neon SQL editor or psql, or send the
+-- statements individually and skip the BEGIN/COMMIT.
+
+
+-- 1. Preview. Confirm these counts before deleting anything.
+
+SELECT 'nuget_dapr_client' AS table_name, count(*) AS rows_to_delete
+FROM nuget_dapr_client
+WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-01 18:00:00'
+UNION ALL
+SELECT 'npm_dapr_dapr', count(*)
+FROM npm_dapr_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-01 18:00:00'
+UNION ALL
+SELECT 'python_dapr', count(*)
+FROM python_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-01 18:00:00';
+
+
+-- 2. Delete.
+
+BEGIN;
+
+DELETE FROM nuget_dapr_client
+WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-01 18:00:00';
+
+DELETE FROM npm_dapr_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-01 18:00:00';
+
+DELETE FROM python_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-01 17:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-01 18:00:00';
+
+COMMIT;
+
+
+-- 3. Verify. Every table should report exactly one collection for the day, and
+-- the surviving row counts should be the morning ones: 247 / 18 / 4.
+
+SELECT 'nuget_dapr_client' AS table_name,
+       count(*) AS rows_kept,
+       min(collection_date) AS first_row,
+       max(collection_date) AS last_row
+FROM nuget_dapr_client
+WHERE collection_date >= DATE '2026-09-01' AND collection_date < DATE '2026-09-02'
+UNION ALL
+SELECT 'npm_dapr_dapr', count(*), min(collection_date), max(collection_date)
+FROM npm_dapr_dapr
+WHERE collection_date >= DATE '2026-09-01' AND collection_date < DATE '2026-09-02'
+UNION ALL
+SELECT 'python_dapr', count(*), min(collection_date), max(collection_date)
+FROM python_dapr
+WHERE collection_date >= DATE '2026-09-01' AND collection_date < DATE '2026-09-02';
