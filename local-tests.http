@@ -18,6 +18,8 @@ Content-Type: application/json
     "CollectDiagridDashboardData" : true,
     "DockerHubImages" : ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
     "DataDogRumServices" : ["dev-dashboard"],
+    "ScarfBuildingBlockPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
+    "ScarfLeaderboardPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
     "SkipStorage": false
 }
 
@@ -38,6 +40,8 @@ Content-Type: application/json
     "CollectDiagridDashboardData" : false,
     "DockerHubImages" : [],
     "DataDogRumServices" : [],
+    "ScarfBuildingBlockPixelIds" : [],
+    "ScarfLeaderboardPixelIds" : [],
     "SkipStorage": false
 }
 
@@ -141,4 +145,61 @@ Content-Type: application/json
     "DockerHubImages" : [],
     "DataDogRumServices" : ["dev-dashboard"],
     "SkipStorage": true
+}
+
+###
+### Scarf only, no storage. Logs three complete ISO weeks for both tables and
+### writes nothing. Completes in seconds. Run this first.
+###
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : [],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "CollectDiagridDashboardData" : false,
+    "DockerHubImages" : [],
+    "DataDogRumServices" : [],
+    "ScarfBuildingBlockPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
+    "ScarfLeaderboardPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
+    "SkipStorage": true
+}
+
+###
+### Scarf only, with storage. Run twice: the second run must not change any
+### row count, which is what proves delete-then-insert is idempotent.
+###
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : [],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "CollectDiagridDashboardData" : false,
+    "DockerHubImages" : [],
+    "DataDogRumServices" : [],
+    "ScarfBuildingBlockPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
+    "ScarfLeaderboardPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
+    "SkipStorage": false
+}
+
+###
+### Row counts per week, for verifying the two runs above.
+###
+POST {{dapr_url}}/v1.0/bindings/daprstats
+Content-Type: application/json
+
+{
+    "operation": "query",
+    "metadata": {
+        "sql": "select week_start, count(*) from scarf_building_block_views group by week_start order by week_start"
+    }
 }

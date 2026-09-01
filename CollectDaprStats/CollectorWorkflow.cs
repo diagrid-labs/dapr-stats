@@ -83,6 +83,27 @@ namespace DaprStats
                 await Task.WhenAll(getDataDogRumDataTasks);
             }
 
+            var scarfTasks = new List<Task>();
+
+            if (input.ScarfBuildingBlockPixelIds?.Length > 0)
+            {
+                scarfTasks.Add(context.CallActivityAsync(
+                    nameof(GetScarfBuildingBlockViews),
+                    new ScarfInput(input.ScarfBuildingBlockPixelIds, input.SkipStorage)));
+            }
+
+            if (input.ScarfLeaderboardPixelIds?.Length > 0)
+            {
+                scarfTasks.Add(context.CallActivityAsync(
+                    nameof(GetScarfCompanyViews),
+                    new ScarfInput(input.ScarfLeaderboardPixelIds, input.SkipStorage)));
+            }
+
+            if (scarfTasks.Count > 0)
+            {
+                await Task.WhenAll(scarfTasks);
+            }
+
             if (input.CollectGitHubData)
             {
                 const string orgName = "dapr";
@@ -231,5 +252,7 @@ namespace DaprStats
         bool CollectGitHubData,
         bool CollectDiagridDashboardData,
         string[] DataDogRumServices,
+        string[] ScarfBuildingBlockPixelIds,
+        string[] ScarfLeaderboardPixelIds,
         bool SkipStorage);
 }
