@@ -1,4 +1,4 @@
-using Dapr.Workflow;
+﻿using Dapr.Workflow;
 
 namespace DaprStats
 {
@@ -66,6 +66,21 @@ namespace DaprStats
                 await context.CallActivityAsync(
                     nameof(GetDiagridDashboardData),
                     new DiagridDashboardInput(input.SkipStorage));
+            }
+
+            if (input.DataDogRumServices?.Length > 0)
+            {
+                var getDataDogRumDataTasks = new List<Task>();
+                foreach (var service in input.DataDogRumServices)
+                {
+                    getDataDogRumDataTasks.Add(context.CallActivityAsync(
+                        nameof(GetDataDogRumData),
+                        new DataDogRumInput(service, input.SkipStorage)));
+                    getDataDogRumDataTasks.Add(context.CallActivityAsync(
+                        nameof(GetDataDogRumUsers),
+                        new DataDogRumInput(service, input.SkipStorage)));
+                }
+                await Task.WhenAll(getDataDogRumDataTasks);
             }
 
             if (input.CollectGitHubData)
@@ -215,5 +230,6 @@ namespace DaprStats
         bool CollectDiscordData,
         bool CollectGitHubData,
         bool CollectDiagridDashboardData,
+        string[] DataDogRumServices,
         bool SkipStorage);
 }

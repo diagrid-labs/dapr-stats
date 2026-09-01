@@ -86,6 +86,25 @@ CREATE TABLE youtube_dapr (
     view_count BIGINT NOT NULL
 );
 
+CREATE TABLE datadog_rum (
+    id SERIAL PRIMARY KEY,
+    service VARCHAR(255) NOT NULL,
+    week_start DATE NOT NULL,
+    session_count BIGINT NOT NULL,
+    unique_user_count BIGINT NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT datadog_rum_service_week_unique UNIQUE (service, week_start)
+);
+
+CREATE TABLE datadog_rum_users (
+    id SERIAL PRIMARY KEY,
+    service VARCHAR(255) NOT NULL,
+    user_anonymous_id VARCHAR(64) NOT NULL,
+    install_date DATE,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT datadog_rum_users_service_user_unique UNIQUE (service, user_anonymous_id)
+);
+
 ---
 
 CREATE OR REPLACE VIEW nuget_dapr_client_view AS

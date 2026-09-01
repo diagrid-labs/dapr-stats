@@ -25,7 +25,7 @@ namespace DaprStats
         {
             try 
             {
-                const int CollectionPeriodInDays = 15;
+                const int CollectionPeriodInDays = 7;
                 var apiOptions = new ApiOptions { PageSize = 250, StartPage = 1 };
                 var repository = await _gitHubClient.Repository.Get(input.Organization, input.Repository);
                 Console.WriteLine($"Collecting data for {repository.Name}");
