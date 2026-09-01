@@ -5,6 +5,60 @@ on:
     # Run at 10:00 CET (09:00 UTC) every Monday
     - cron: '0 9 * * 1'
   workflow_dispatch:
+    # NOTE: workflow_dispatch allows at most 10 inputs.
+    # Input defaults only apply to manual runs; scheduled runs fall back to the
+    # DEFAULT_* / FIXED_* env values below, so keep the two in sync.
+    inputs:
+      nuget_packages:
+        description: 'NuGet packages, comma-separated (empty = skip NuGet)'
+        required: false
+        type: string
+        default: 'Dapr.Client,Dapr.Workflow,Dapr.AspNetCore,Dapr.Extensions.Configuration,Dapr.Actors,Dapr.Messaging,Dapr.Jobs,CommunityToolkit.Aspire.Hosting.Dapr,Diagrid.AI.Microsoft.AgentFramework'
+      npm_packages:
+        description: 'npm packages, comma-separated (empty = skip npm)'
+        required: false
+        type: string
+        default: '@dapr/dapr'
+      python_packages:
+        description: 'PyPI packages, comma-separated (empty = skip PyPI)'
+        required: false
+        type: string
+        default: 'dapr,dapr-agents,dapr-ext-workflow,diagrid'
+      collect_dockerhub:
+        description: 'Collect Docker Hub image pulls'
+        required: false
+        type: boolean
+        default: true
+      collect_datadog:
+        description: 'Collect Datadog RUM views and users'
+        required: false
+        type: boolean
+        default: true
+      collect_scarf:
+        description: 'Collect Scarf pixel events'
+        required: false
+        type: boolean
+        default: true
+      collect_discord:
+        description: 'Collect Discord data'
+        required: false
+        type: boolean
+        default: true
+      collect_github:
+        description: 'Collect GitHub data for the dapr org'
+        required: false
+        type: boolean
+        default: true
+      collect_diagrid_dashboard:
+        description: 'Collect Diagrid dashboard data'
+        required: false
+        type: boolean
+        default: true
+      skip_storage:
+        description: 'Dry run: fetch everything but do not write to the database'
+        required: false
+        type: boolean
+        default: false
 
 env:
   POSTGRESQLCONNECTION: ${{ secrets.POSTGRESQLCONNECTION }}
@@ -14,6 +68,18 @@ env:
   DATADOGAPIKEY: ${{ secrets.DATADOGAPIKEY }}
   DATADOGAPPKEY: ${{ secrets.DATADOGAPPKEY }}
   SCARF_DAPR_API_TOKEN: ${{ secrets.SCARF_DAPR_API_TOKEN }}
+
+  # Used by scheduled runs, where workflow_dispatch input defaults do not apply.
+  DEFAULT_NUGET_PACKAGES: 'Dapr.Client,Dapr.Workflow,Dapr.AspNetCore,Dapr.Extensions.Configuration,Dapr.Actors,Dapr.Messaging,Dapr.Jobs,CommunityToolkit.Aspire.Hosting.Dapr,Diagrid.AI.Microsoft.AgentFramework'
+  DEFAULT_NPM_PACKAGES: '@dapr/dapr'
+  DEFAULT_PYTHON_PACKAGES: 'dapr,dapr-agents,dapr-ext-workflow,diagrid'
+
+  # Not exposed as dispatch inputs (10-input cap); switched on and off by the
+  # collect_dockerhub / collect_datadog / collect_scarf checkboxes.
+  FIXED_DOCKERHUB_IMAGES: 'daprio/daprd,daprio/scheduler,daprio/operator,daprio/injector,daprio/sentry,daprio/placement'
+  FIXED_DATADOG_RUM_SERVICES: 'dev-dashboard'
+  FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS: '4848fb3b-3edb-4329-90a9-a9d79afff054'
+  FIXED_SCARF_LEADERBOARD_PIXEL_IDS: '4848fb3b-3edb-4329-90a9-a9d79afff054,0f63416a-15c2-4ccd-bae0-001898f75f8f'
 
 jobs:
   run-workflow:
@@ -47,7 +113,7 @@ jobs:
           DAPR_PID=$!
           echo "dapr_pid=$DAPR_PID" >> $GITHUB_ENV
           echo "Dapr multi-app started in background with PID: $DAPR_PID"
-          
+
           # Wait a few seconds and verify the process is still running
           sleep 15
           if ! kill -0 $DAPR_PID 2>/dev/null; then
@@ -58,40 +124,135 @@ jobs:
 
       - name: Generate Variables and Start CollectorWorkflow
         id: start-workflow
+        env:
+          # Empty on scheduled runs; the script then falls back to the defaults.
+          IN_NUGET_PACKAGES: ${{ inputs.nuget_packages }}
+          IN_NPM_PACKAGES: ${{ inputs.npm_packages }}
+          IN_PYTHON_PACKAGES: ${{ inputs.python_packages }}
+          IN_COLLECT_DOCKERHUB: ${{ inputs.collect_dockerhub }}
+          IN_COLLECT_DATADOG: ${{ inputs.collect_datadog }}
+          IN_COLLECT_SCARF: ${{ inputs.collect_scarf }}
+          IN_COLLECT_DISCORD: ${{ inputs.collect_discord }}
+          IN_COLLECT_GITHUB: ${{ inputs.collect_github }}
+          IN_COLLECT_DIAGRID_DASHBOARD: ${{ inputs.collect_diagrid_dashboard }}
+          IN_SKIP_STORAGE: ${{ inputs.skip_storage }}
         run: |
+          set -euo pipefail
+
+          # On a manual run the submitted value always wins, including a
+          # deliberately cleared list or an unchecked box. Other triggers carry
+          # no inputs at all, so they use the scheduled default.
+          pick() {
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              printf '%s' "$1"
+            else
+              printf '%s' "$2"
+            fi
+          }
+
+          norm_bool() {
+            if [ "$1" = "true" ]; then echo true; else echo false; fi
+          }
+
+          # Trims each entry and drops blanks, so an empty list yields [].
+          csv_to_json() {
+            jq -nc --arg csv "$1" '$csv
+              | split(",")
+              | map(gsub("^\\s+|\\s+$"; ""))
+              | map(select(length > 0))'
+          }
+
+          NUGET_CSV=$(pick "$IN_NUGET_PACKAGES" "$DEFAULT_NUGET_PACKAGES")
+          NPM_CSV=$(pick "$IN_NPM_PACKAGES" "$DEFAULT_NPM_PACKAGES")
+          PYTHON_CSV=$(pick "$IN_PYTHON_PACKAGES" "$DEFAULT_PYTHON_PACKAGES")
+
+          COLLECT_DOCKERHUB=$(norm_bool "$(pick "$IN_COLLECT_DOCKERHUB" true)")
+          COLLECT_DATADOG=$(norm_bool "$(pick "$IN_COLLECT_DATADOG" true)")
+          COLLECT_SCARF=$(norm_bool "$(pick "$IN_COLLECT_SCARF" true)")
+          COLLECT_DISCORD=$(norm_bool "$(pick "$IN_COLLECT_DISCORD" true)")
+          COLLECT_GITHUB=$(norm_bool "$(pick "$IN_COLLECT_GITHUB" true)")
+          COLLECT_DIAGRID=$(norm_bool "$(pick "$IN_COLLECT_DIAGRID_DASHBOARD" true)")
+          SKIP_STORAGE=$(norm_bool "$(pick "$IN_SKIP_STORAGE" false)")
+
+          # CollectorWorkflow skips any collector whose list is empty, so the
+          # three toggles are applied by blanking out the fixed lists.
+          DOCKERHUB_CSV=""
+          DATADOG_CSV=""
+          SCARF_BB_CSV=""
+          SCARF_LB_CSV=""
+          if [ "$COLLECT_DOCKERHUB" = "true" ]; then
+            DOCKERHUB_CSV="$FIXED_DOCKERHUB_IMAGES"
+          fi
+          if [ "$COLLECT_DATADOG" = "true" ]; then
+            DATADOG_CSV="$FIXED_DATADOG_RUM_SERVICES"
+          fi
+          if [ "$COLLECT_SCARF" = "true" ]; then
+            SCARF_BB_CSV="$FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS"
+            SCARF_LB_CSV="$FIXED_SCARF_LEADERBOARD_PIXEL_IDS"
+          fi
+
           # Generate random UUID for workflow_id
           WORKFLOW_ID=$(uuidgen)
           echo "workflow_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
-          
+
           # Generate current ISO 8601 timestamp
           CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "current_date=$CURRENT_DATE" >> $GITHUB_OUTPUT
-          
+
+          PAYLOAD=$(jq -nc \
+            --arg collectionDate "$CURRENT_DATE" \
+            --argjson nuget "$(csv_to_json "$NUGET_CSV")" \
+            --argjson npm "$(csv_to_json "$NPM_CSV")" \
+            --argjson python "$(csv_to_json "$PYTHON_CSV")" \
+            --argjson dockerHub "$(csv_to_json "$DOCKERHUB_CSV")" \
+            --argjson dataDog "$(csv_to_json "$DATADOG_CSV")" \
+            --argjson scarfBuildingBlock "$(csv_to_json "$SCARF_BB_CSV")" \
+            --argjson scarfLeaderboard "$(csv_to_json "$SCARF_LB_CSV")" \
+            --argjson discord "$COLLECT_DISCORD" \
+            --argjson github "$COLLECT_GITHUB" \
+            --argjson diagrid "$COLLECT_DIAGRID" \
+            --argjson skipStorage "$SKIP_STORAGE" \
+            '{
+              CollectionDate: $collectionDate,
+              NuGetPackageNames: $nuget,
+              NpmPackageNames: $npm,
+              PythonPackageNames: $python,
+              CollectDiscordData: $discord,
+              CollectGitHubData: $github,
+              CollectDiagridDashboardData: $diagrid,
+              DockerHubImages: $dockerHub,
+              DataDogRumServices: $dataDog,
+              ScarfBuildingBlockPixelIds: $scarfBuildingBlock,
+              ScarfLeaderboardPixelIds: $scarfLeaderboard,
+              SkipStorage: $skipStorage
+            }')
+
           echo "Starting workflow with ID: $WORKFLOW_ID"
           echo "Collection date: $CURRENT_DATE"
-          
+          echo "Payload:"
+          echo "$PAYLOAD" | jq .
+
+          {
+            echo "### CollectorWorkflow input"
+            echo ""
+            echo '```json'
+            echo "$PAYLOAD" | jq .
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
           # Make POST request to start the workflow
           RESPONSE=$(curl -s -X POST "http://localhost:3500/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID=$WORKFLOW_ID" \
             -H "Content-Type: application/json" \
-            -d '{
-              "CollectionDate": "'"$CURRENT_DATE"'",
-              "NuGetPackageNames": ["Dapr.Client", "Dapr.Workflow", "Dapr.AspNetCore", "Dapr.Extensions.Configuration", "Dapr.Actors", "Dapr.Messaging", "Dapr.Jobs", "CommunityToolkit.Aspire.Hosting.Dapr", "Diagrid.AI.Microsoft.AgentFramework"],
-              "NpmPackageNames": ["@dapr/dapr"],
-              "PythonPackageNames": ["dapr", "dapr-agents", "dapr-ext-workflow", "diagrid"],
-              "CollectDiscordData": true,
-              "CollectGitHubData": true,
-              "CollectDiagridDashboardData": true,
-              "DockerHubImages": ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
-              "DataDogRumServices": ["dev-dashboard"],
-              "ScarfBuildingBlockPixelIds": ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
-              "ScarfLeaderboardPixelIds": ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
-              "SkipStorage": false
-            }')
-          
+            -d "$PAYLOAD")
+
           echo "Response: $RESPONSE"
-          
+
           # Extract instanceID from response
-          INSTANCE_ID=$(echo $RESPONSE | jq -r '.instanceID')
+          INSTANCE_ID=$(echo "$RESPONSE" | jq -r '.instanceID // empty')
+          if [ -z "$INSTANCE_ID" ]; then
+            echo "❌ Failed to start CollectorWorkflow"
+            exit 1
+          fi
           echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
           echo "Instance ID: $INSTANCE_ID"
 
@@ -118,7 +279,7 @@ jobs:
       - name: Evaluate Result
         run: |
           STATUS="${{ steps.check-status.outputs.status }}"
-          
+
           if [ "$STATUS" = "COMPLETED" ]; then
             echo "✅ Workflow completed successfully!"
             exit 0

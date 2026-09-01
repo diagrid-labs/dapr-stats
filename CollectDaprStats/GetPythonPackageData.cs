@@ -34,11 +34,13 @@ namespace DaprStats
                     CollectedOverNumberOfDays: 30
                 );
 
-                const string tableName = "python_dapr";
-                var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5)";
-                var sqlParameters = new object[] { pythonPackageData.PackageName, pythonPackageData.CollectionDate, pythonPackageData.PackageVersion, pythonPackageData.Downloads, pythonPackageData.CollectedOverNumberOfDays };
-
-                await _output.InsertAsync(sqlText, sqlParameters);
+                if (!input.SkipStorage)
+                {
+                    const string tableName = "python_dapr";
+                    var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5)";
+                    var sqlParameters = new object[] { pythonPackageData.PackageName, pythonPackageData.CollectionDate, pythonPackageData.PackageVersion, pythonPackageData.Downloads, pythonPackageData.CollectedOverNumberOfDays };
+                    await _output.InsertAsync(sqlText, sqlParameters);
+                }
 
                 return true;
             }
