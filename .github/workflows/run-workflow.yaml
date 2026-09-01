@@ -13,6 +13,7 @@ env:
   DAPRDISCORDSERVERID: ${{ secrets.DAPRDISCORDSERVERID }}
   DATADOGAPIKEY: ${{ secrets.DATADOGAPIKEY }}
   DATADOGAPPKEY: ${{ secrets.DATADOGAPPKEY }}
+  SCARFAPITOKEN: ${{ secrets.SCARFAPITOKEN }}
 
 jobs:
   run-workflow:
@@ -82,6 +83,8 @@ jobs:
               "CollectDiagridDashboardData": true,
               "DockerHubImages": ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
               "DataDogRumServices": ["dev-dashboard"],
+              "ScarfBuildingBlockPixelIds": ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
+              "ScarfLeaderboardPixelIds": ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
               "SkipStorage": false
             }')
           
