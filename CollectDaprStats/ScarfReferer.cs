@@ -25,6 +25,13 @@ namespace DaprStats
         private const string BuildingBlocksSegment = "/building-blocks/";
         private const string BuildingBlocksIndex = "/building-blocks";
 
+        // Matches the width of the building_block column
+        // (VARCHAR(255) in postgres/postgres_schema.psql). A segment longer
+        // than this cannot be a real building block, and inserting it as-is
+        // would fail the whole chunk with Postgres error 22001 after the
+        // week's DELETE has already run.
+        private const int MaxBuildingBlockLength = 255;
+
         // Versioned docs subdomains: v1-9, v1-17, v1-13-1.
         private static readonly Regex VersionedHost = new(
             @"^v\d+(-\d+)+\.docs\.dapr\.io$",
@@ -69,10 +76,25 @@ namespace DaprStats
             var slash = remainder.IndexOf('/');
             var segment = slash < 0 ? remainder : remainder[..slash];
 
-            buildingBlock = segment.Length == 0
-                ? IndexPage
-                : Uri.UnescapeDataString(segment).ToLowerInvariant();
+            if (segment.Length == 0)
+            {
+                buildingBlock = IndexPage;
+                return true;
+            }
 
+            // Unescape before validating: the segment boundary above is
+            // chosen on the raw, still-escaped text, so an encoded %2F could
+            // otherwise smuggle a literal '/' past it. Validate only after
+            // unescaping, on what will actually be stored.
+            var unescaped = Uri.UnescapeDataString(segment);
+
+            if (unescaped.Length > MaxBuildingBlockLength ||
+                unescaped.Any(c => char.IsControl(c) || c == '/'))
+            {
+                return false;
+            }
+
+            buildingBlock = unescaped.ToLowerInvariant();
             return true;
         }
 

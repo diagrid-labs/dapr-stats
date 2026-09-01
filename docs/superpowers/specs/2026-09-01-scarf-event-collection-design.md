@@ -57,9 +57,14 @@ Each run fetches the last three *complete* ISO weeks and rewrites them.
 - **Pages outside `/building-blocks/`.** The concepts, getting-started,
   operations and reference sections are dropped. Only the building-block tree
   and its index page are stored.
-- **Third-party mirrors.** `dapr.website.cncfstack.com` and
-  `blue-dune-0da9d541e.7.azurestaticapps.net` serve the Dapr docs with Dapr's
-  pixel embedded. They are not sites the Dapr project controls and are excluded.
+- **Third-party mirrors, for `scarf_building_block_views` only.**
+  `dapr.website.cncfstack.com` and `blue-dune-0da9d541e.7.azurestaticapps.net`
+  serve the Dapr docs with Dapr's pixel embedded. They are not sites the Dapr
+  project controls and `ScarfReferer`'s host allow-list excludes them from the
+  building-block table. `scarf_company_views` gets no such filter: it keys off
+  `tracking_pixel_id`, and `breakdown=by-company` returns no `referer` to
+  filter on, so mirror traffic on the docs pixel counts toward the company
+  leaderboard.
 
 ## Verified facts
 
@@ -340,42 +345,52 @@ activities by convention.
 
 ## Database schema
 
-Added to `postgres/postgres_schema.psql`, following the existing `---`-separated
-statement style.
+Added to `postgres/postgres_schema.psql`, matching the house style every other
+table in that file uses: a surrogate `SERIAL PRIMARY KEY`, a named `UNIQUE`
+constraint carrying the real key, `VARCHAR(255)` rather than `text`, `TIMESTAMP`
+rather than `timestamptz`, and no `IF NOT EXISTS` — the file is applied once,
+by hand, not run idempotently.
 
 ### `scarf_building_block_views`
 
 ```sql
-CREATE TABLE IF NOT EXISTS scarf_building_block_views (
-    week_start      date        NOT NULL,
-    building_block  text        NOT NULL,
-    company_name    text        NOT NULL,
-    company_domain  text        NOT NULL DEFAULT '',
-    views           bigint      NOT NULL,
-    unique_visitors bigint      NOT NULL,
-    collection_date timestamptz NOT NULL,
-    PRIMARY KEY (week_start, building_block, company_name, company_domain)
+CREATE TABLE scarf_building_block_views (
+    id SERIAL PRIMARY KEY,
+    week_start DATE NOT NULL,
+    building_block VARCHAR(255) NOT NULL,
+    company_name VARCHAR(255) NOT NULL,
+    company_domain VARCHAR(255) NOT NULL DEFAULT '',
+    views BIGINT NOT NULL,
+    unique_visitors BIGINT NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT scarf_building_block_views_unique
+        UNIQUE (week_start, building_block, company_name, company_domain)
 );
 ```
 
 ### `scarf_company_views`
 
 ```sql
-CREATE TABLE IF NOT EXISTS scarf_company_views (
-    week_start      date        NOT NULL,
-    company_name    text        NOT NULL,
-    company_domain  text        NOT NULL DEFAULT '',
-    views           bigint      NOT NULL,
-    unique_visitors bigint      NOT NULL,
-    collection_date timestamptz NOT NULL,
-    PRIMARY KEY (week_start, company_name, company_domain)
+CREATE TABLE scarf_company_views (
+    id SERIAL PRIMARY KEY,
+    week_start DATE NOT NULL,
+    company_name VARCHAR(255) NOT NULL,
+    company_domain VARCHAR(255) NOT NULL DEFAULT '',
+    views BIGINT NOT NULL,
+    unique_visitors BIGINT NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT scarf_company_views_unique
+        UNIQUE (week_start, company_name, company_domain)
 );
 ```
 
 `company_domain` is `NOT NULL DEFAULT ''` with nulls coalesced at insert.
 `company_name` alone is not a safe key — two companies can share a display
 name — and the domain alone is not safe either while it is nullable in the API
-schema. Both, together, are.
+schema. Both, together, are what the named `UNIQUE` constraint enforces; the
+surrogate `id` stays the `PRIMARY KEY` so the tables follow the same shape as
+every other table in the schema, rather than the composite `PRIMARY KEY` an
+earlier draft of this design used.
 
 ### `scarf_building_block_company_view`
 

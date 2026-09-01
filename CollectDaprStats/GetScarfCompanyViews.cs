@@ -49,8 +49,43 @@ namespace DaprStats
             var from = DateOnly.FromDateTime(weeks[0].From);
             var to = DateOnly.FromDateTime(weeks[^1].To);
 
-            var rows = await FetchAsync(input.PixelIds, from, to, token);
+            IReadOnlyList<ScarfAggregationResponse.Row> rows;
+            try
+            {
+                rows = await FetchAsync(input.PixelIds, from, to, token);
+            }
+            catch (Exception ex)
+            {
+                // Not rethrown: this activity runs under Task.WhenAll
+                // alongside GetScarfBuildingBlockViews in CollectorWorkflow,
+                // and an unhandled exception here would fail the whole
+                // workflow and skip the unrelated GitHub collection below it.
+                // The bool return exists so a Scarf outage is reported
+                // without taking anything else down.
+                Console.WriteLine(
+                    $"Failed to fetch Scarf company data: {ex.Message}");
+                return false;
+            }
+
             var byWeek = Aggregate(rows);
+
+            // Zero rows across every week, from here, is indistinguishable
+            // between a genuinely quiet three weeks and Scarf answering an
+            // unrecognised tracking_pixel_id with HTTP 200 and {"data":[]}.
+            // Either would otherwise delete three real weeks of data below
+            // and write nothing back, and the three-week window means the
+            // oldest of them is gone for good before the next run could
+            // repair it. Bail out before the first DELETE rather than risk
+            // that.
+            if (byWeek.Values.Sum(list => list.Count) == 0)
+            {
+                Console.WriteLine(
+                    "WARNING: Scarf companies returned zero rows across all " +
+                    $"{WeeksPerRun} weeks. Skipping storage entirely (no " +
+                    "deletes performed). Likely cause: a wrong or revoked " +
+                    "tracking_pixel_id.");
+                return false;
+            }
 
             var allSucceeded = true;
 
@@ -174,6 +209,9 @@ namespace DaprStats
 
             // Delete-then-insert, for the same reason as the building-block
             // table: a company Scarf re-attributes would otherwise linger.
+            // The binding has no transaction, so a failure between the
+            // delete and the last insert leaves the week short until the
+            // next run's three-week overlap repairs it.
             await _output.InsertAsync(
                 $"delete from {TableName} where week_start = $1::date",
                 [weekText]);

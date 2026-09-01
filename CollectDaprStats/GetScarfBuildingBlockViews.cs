@@ -13,11 +13,9 @@ namespace DaprStats
         // changes an earlier week, and the overlap lets that correction land.
         private const int WeeksPerRun = 3;
 
-        // Capitalised deliberately. /v2/* accepts `dapr`, but /v3/* returns
-        // 404 {"detail":"Organization not found"} for anything but `Dapr`.
-        // Confirmed 2026-09-01.
-        private const string Owner = "Dapr";
-
+        // `Dapr` is capitalised deliberately. /v2/* accepts `dapr`, but /v3/*
+        // returns 404 {"detail":"Organization not found"} for anything but
+        // `Dapr`. Confirmed 2026-09-01.
         private const string ExportUrl =
             "https://api.scarf.sh/v3/insights/Dapr/aggregations/export";
 
@@ -60,8 +58,46 @@ namespace DaprStats
             var from = DateOnly.FromDateTime(weeks[0].From);
             var to = DateOnly.FromDateTime(weeks[^1].To);
 
-            var rows = await FetchAsync(input.PixelIds, from, to, token);
+            IReadOnlyList<ScarfAggregationResponse.Row> rows;
+            try
+            {
+                rows = await FetchAsync(input.PixelIds, from, to, token);
+            }
+            catch (Exception ex)
+            {
+                // Not rethrown: this activity runs under Task.WhenAll
+                // alongside GetScarfCompanyViews in CollectorWorkflow, and an
+                // unhandled exception here would fail the whole workflow and
+                // skip the unrelated GitHub collection below it. The bool
+                // return exists so a Scarf outage is reported without taking
+                // anything else down.
+                Console.WriteLine(
+                    $"Failed to fetch Scarf building block data: {ex.Message}");
+                return false;
+            }
+
             var byWeek = Aggregate(rows);
+
+            // Zero rows across every week, from here, is indistinguishable
+            // between a genuinely quiet three weeks and two failure modes
+            // that both look healthy: Scarf answering an unrecognised
+            // tracking_pixel_id with HTTP 200 and {"data":[]}, or a docs-site
+            // restructure that stops /building-blocks/ appearing in any
+            // referer so Aggregate drops every row. Either would otherwise
+            // delete three real weeks of data below and write nothing back,
+            // and the three-week window means the oldest of them is gone for
+            // good before the next run could repair it. Bail out before the
+            // first DELETE rather than risk that.
+            if (byWeek.Values.Sum(list => list.Count) == 0)
+            {
+                Console.WriteLine(
+                    "WARNING: Scarf building blocks returned zero rows across " +
+                    $"all {WeeksPerRun} weeks. Skipping storage entirely " +
+                    "(no deletes performed). Likely causes: a wrong or " +
+                    "revoked tracking_pixel_id, or a docs restructure that " +
+                    "moved /building-blocks/ out of the referer paths.");
+                return false;
+            }
 
             var allSucceeded = true;
 
