@@ -17,6 +17,7 @@ Content-Type: application/json
     "CollectGitHubData" : true,
     "CollectDiagridDashboardData" : true,
     "DockerHubImages" : ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
+    "DataDogRumServices" : ["dev-dashboard"],
     "SkipStorage": false
 }
 
@@ -119,4 +120,24 @@ Content-Type: application/json
     "CollectDiagridDashboardData" : false,
     "DockerHubImages" : [],
     "SkipStorage": false
+}
+
+###
+### DataDog RUM only, no storage. Logs three complete ISO weeks for
+### dev-dashboard and writes nothing. Completes in seconds.
+###
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : [],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "CollectDiagridDashboardData" : false,
+    "DockerHubImages" : [],
+    "DataDogRumServices" : ["dev-dashboard"],
+    "SkipStorage": true
 }

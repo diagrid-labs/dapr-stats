@@ -7,3 +7,7 @@ __azurite*
 # Local secrets
 
 secrets.json
+
+# Scratch fixtures (contain real RUM anonymous user ids)
+scratch/
+.dd-keys.env

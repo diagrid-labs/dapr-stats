@@ -24,6 +24,8 @@ The application requires the following secrets to be set as environment variable
 - `export DISCORDBOTTOKEN=<DISCORD_BOT_TOKEN_VALUE>`
 - `export DAPRDISCORDSERVERID=<DISCORD_SERVER_ID_VALUE>`
 - `export POSTGRESQLCONNECTION=<POSTGRES_CONNECTION_VALUE>`
+- `export DATADOGAPIKEY=<DATADOG_API_KEY_VALUE>`
+- `export DATADOGAPPKEY=<DATADOG_APP_KEY_VALUE>`
 
 ## Running the CollectDaprStats program
 

@@ -2,8 +2,8 @@ name: Run CollectorWorkflow
 
 on:
   schedule:
-    # Run at 10:00 CET (09:00 UTC) on day 1 and 16 of each month
-    - cron: '0 9 1,16 * *'
+    # Run at 10:00 CET (09:00 UTC) every Monday
+    - cron: '0 9 * * 1'
   workflow_dispatch:
 
 env:
@@ -11,6 +11,8 @@ env:
   DAPRSTATSGITHUBPAT: ${{ secrets.DAPRSTATSGITHUBPAT }}
   DISCORDBOTTOKEN: ${{ secrets.DISCORDBOTTOKEN }}
   DAPRDISCORDSERVERID: ${{ secrets.DAPRDISCORDSERVERID }}
+  DATADOGAPIKEY: ${{ secrets.DATADOGAPIKEY }}
+  DATADOGAPPKEY: ${{ secrets.DATADOGAPPKEY }}
 
 jobs:
   run-workflow:
@@ -79,6 +81,7 @@ jobs:
               "CollectGitHubData": true,
               "CollectDiagridDashboardData": true,
               "DockerHubImages": ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
+              "DataDogRumServices": ["dev-dashboard"],
               "SkipStorage": false
             }')
           
