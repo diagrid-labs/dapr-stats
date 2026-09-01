@@ -425,3 +425,71 @@ ORDER BY
     package_version;
 
 ---
+
+CREATE TABLE scarf_building_block_views (
+    id SERIAL PRIMARY KEY,
+    week_start DATE NOT NULL,
+    building_block VARCHAR(255) NOT NULL,
+    company_name VARCHAR(255) NOT NULL,
+    company_domain VARCHAR(255) NOT NULL DEFAULT '',
+    views BIGINT NOT NULL,
+    unique_visitors BIGINT NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT scarf_building_block_views_unique
+        UNIQUE (week_start, building_block, company_name, company_domain)
+);
+
+CREATE TABLE scarf_company_views (
+    id SERIAL PRIMARY KEY,
+    week_start DATE NOT NULL,
+    company_name VARCHAR(255) NOT NULL,
+    company_domain VARCHAR(255) NOT NULL DEFAULT '',
+    views BIGINT NOT NULL,
+    unique_visitors BIGINT NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT scarf_company_views_unique
+        UNIQUE (week_start, company_name, company_domain)
+);
+
+---
+
+CREATE OR REPLACE VIEW scarf_building_block_company_view AS
+SELECT
+    week_start,
+    company_name,
+    company_domain,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'actors'), 0)             AS actors,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'bindings'), 0)           AS bindings,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'configuration'), 0)      AS configuration,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'conversation'), 0)       AS conversation,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'cryptography'), 0)       AS cryptography,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'distributed-lock'), 0)   AS distributed_lock,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'jobs'), 0)               AS jobs,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'pubsub'), 0)             AS pubsub,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'secrets'), 0)            AS secrets,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'service-invocation'), 0) AS service_invocation,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'state-management'), 0)   AS state_management,
+    COALESCE(SUM(views) FILTER (WHERE building_block = 'workflow'), 0)           AS workflow,
+    COALESCE(SUM(views) FILTER (WHERE building_block = '(index)'), 0)            AS index_page,
+    SUM(views)                                                                   AS total
+FROM scarf_building_block_views
+GROUP BY week_start, company_name, company_domain;
+
+---
+
+CREATE OR REPLACE VIEW scarf_top_companies_view AS
+SELECT week_start, company_name, company_domain, views, unique_visitors, rank
+FROM (
+    SELECT
+        week_start,
+        company_name,
+        company_domain,
+        views,
+        unique_visitors,
+        ROW_NUMBER() OVER (
+            PARTITION BY week_start
+            ORDER BY views DESC, company_name
+        ) AS rank
+    FROM scarf_company_views
+) ranked
+WHERE rank <= 100;

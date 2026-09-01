@@ -13,6 +13,9 @@ At the moment the data sources include:
   - Issues
   - Comments
   - Pull Requests
+- Scarf pixel data for `dapr.io` and `docs.dapr.io`:
+  - Weekly views of each Dapr building block documentation page, per company
+  - Weekly company visit counts across both sites
 
 The program is a .NET web service that's using Dapr workflow.
 
@@ -26,6 +29,7 @@ The application requires the following secrets to be set as environment variable
 - `export POSTGRESQLCONNECTION=<POSTGRES_CONNECTION_VALUE>`
 - `export DATADOGAPIKEY=<DATADOG_API_KEY_VALUE>`
 - `export DATADOGAPPKEY=<DATADOG_APP_KEY_VALUE>`
+- `export SCARF_DAPR_API_TOKEN=<SCARF_API_TOKEN_VALUE>`
 
 ## Running the CollectDaprStats program
 
