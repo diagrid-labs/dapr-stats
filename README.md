@@ -29,7 +29,7 @@ The application requires the following secrets to be set as environment variable
 - `export POSTGRESQLCONNECTION=<POSTGRES_CONNECTION_VALUE>`
 - `export DATADOGAPIKEY=<DATADOG_API_KEY_VALUE>`
 - `export DATADOGAPPKEY=<DATADOG_APP_KEY_VALUE>`
-- `export SCARFAPITOKEN=<SCARF_API_TOKEN_VALUE>`
+- `export SCARF_DAPR_API_TOKEN=<SCARF_API_TOKEN_VALUE>`
 
 ## Running the CollectDaprStats program
 

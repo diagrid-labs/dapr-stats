@@ -314,7 +314,7 @@ Passing a non-docs pixel here is harmless rather than wrong: the host allow-list
 in `ScarfReferer` discards everything that is not a Dapr docs host, and dapr.io
 has no building-block pages to contribute.
 
-1. Read `SCARFAPITOKEN` from the `secretstore`.
+1. Read `SCARF_DAPR_API_TOKEN` from the `secretstore`.
 2. Compute the window from `IsoWeek.CompleteWeeksBefore(DateTime.UtcNow, 3)`.
 3. Issue request 1. A non-2xx throws with the status code and body, as
    `GetDataDogRumData` does.
@@ -554,11 +554,11 @@ property of the account the token belongs to, not a per-run choice.
 The secret store is `secretstores.local.env`, so the secret key is the
 environment variable name.
 
-- `CollectDaprStats/secrets.json.example` gains `"ScarfApiToken": ""`
-- `README.md` gains `export SCARFAPITOKEN=<SCARF_API_TOKEN_VALUE>` to the
+- `CollectDaprStats/secrets.json.example` gains `"ScarfDaprApiToken": ""`
+- `README.md` gains `export SCARF_DAPR_API_TOKEN=<SCARF_API_TOKEN_VALUE>` to the
   environment variable list, and Scarf to the data-source list
 - `.github/workflows/run-workflow.yaml` gains
-  `SCARFAPITOKEN: ${{ secrets.SCARFAPITOKEN }}` to `env:`, and both pixel arrays
+  `SCARF_DAPR_API_TOKEN: ${{ secrets.SCARF_DAPR_API_TOKEN }}` to `env:`, and both pixel arrays
   to the workflow start payload:
 
   ```json
@@ -569,7 +569,7 @@ environment variable name.
   ]
   ```
 
-A repository secret named `SCARFAPITOKEN` must be created before the first
+A repository secret named `SCARF_DAPR_API_TOKEN` must be created before the first
 scheduled run. Until it exists the activities throw and the workflow reports
 failure.
 
@@ -583,7 +583,7 @@ the tool for interrogating the Scarf API by hand.
 
 | Failure | Behaviour |
 |---|---|
-| `SCARFAPITOKEN` missing from the secret store | `GetSecretAsync` throws; the activity fails and Dapr retries it |
+| `SCARF_DAPR_API_TOKEN` missing from the secret store | `GetSecretAsync` throws; the activity fails and Dapr retries it |
 | Non-2xx from Scarf | `HttpRequestException` with status code and response body, matching `GetDataDogRumData` |
 | Malformed JSON | `JsonException` propagates; the activity fails |
 | A referer that will not parse | Row dropped silently. Bots and mangled referers are expected and are not an error |

@@ -3,7 +3,7 @@
     Probes a Scarf API endpoint and prints the status code and response body.
 
 .DESCRIPTION
-    Reads the API token from the SCARFAPITOKEN environment variable and never
+    Reads the API token from the SCARF_DAPR_API_TOKEN environment variable and never
     echoes it. Windows PowerShell 5.1 has no -SkipHttpErrorCheck, so a non-2xx
     response throws; the catch block recovers the status code and the API's own
     error body so a 403 or 404 is as readable as a success.
@@ -39,11 +39,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if ([string]::IsNullOrWhiteSpace($env:SCARFAPITOKEN)) {
-    throw 'SCARFAPITOKEN is not set. Set it in this terminal before running the probe.'
+if ([string]::IsNullOrWhiteSpace($env:SCARF_DAPR_API_TOKEN)) {
+    throw 'SCARF_DAPR_API_TOKEN is not set. Set it in this terminal before running the probe.'
 }
 
-$headers = @{ Authorization = "Bearer $env:SCARFAPITOKEN" }
+$headers = @{ Authorization = "Bearer $env:SCARF_DAPR_API_TOKEN" }
 
 try {
     $response = Invoke-WebRequest -Uri $Url -Headers $headers -UseBasicParsing

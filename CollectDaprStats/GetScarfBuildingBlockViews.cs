@@ -20,7 +20,7 @@ namespace DaprStats
             "https://api.scarf.sh/v3/insights/Dapr/aggregations/export";
 
         private const string SecretStore = "secretstore";
-        private const string ApiTokenSecret = "SCARFAPITOKEN";
+        private const string ApiTokenSecret = "SCARF_DAPR_API_TOKEN";
 
         private const string TableName = "scarf_building_block_views";
 

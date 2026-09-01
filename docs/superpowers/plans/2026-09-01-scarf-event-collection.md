@@ -17,7 +17,7 @@
 - Source namespace is `DaprStats` with **brace-scoped** namespaces, matching every existing file in `CollectDaprStats/`. Test namespace is `CollectDaprStats.Tests` with a **file-scoped** namespace, matching every existing file in `CollectDaprStats.Tests/`.
 - Scarf owner slug is exactly `Dapr`, capitalised. `/v2/*` accepts `dapr`; `/v3/*` returns `404 {"detail":"Organization not found"}` for anything else.
 - Scarf base URL: `https://api.scarf.sh`. Auth header: `Authorization: Bearer <token>`.
-- Secret store component name is `secretstore`; the Scarf secret key is `SCARFAPITOKEN`.
+- Secret store component name is `secretstore`; the Scarf secret key is `SCARF_DAPR_API_TOKEN`.
 - Docs pixel id: `4848fb3b-3edb-4329-90a9-a9d79afff054`. dapr.io pixel id: `0f63416a-15c2-4ccd-bae0-001898f75f8f`.
 - `WeeksPerRun` is `3` in both activities.
 - Table names: `scarf_building_block_views`, `scarf_company_views`. View names: `scarf_building_block_company_view`, `scarf_top_companies_view`.
@@ -48,9 +48,9 @@
 | `postgres/postgres_schema.psql` | Append two tables and two views |
 | `CollectDaprStats/CollectorWorkflow.cs` | Two fields on `CollectorWorkflowInput`; a Scarf block in `RunAsync` |
 | `local-tests.http` | Scarf pixel arrays in the two full payloads; two Scarf-only entries |
-| `.github/workflows/run-workflow.yaml` | `SCARFAPITOKEN` env var; pixel arrays in the start payload |
-| `CollectDaprStats/secrets.json.example` | `"ScarfApiToken": ""` |
-| `README.md` | Scarf in the data-source list; `SCARFAPITOKEN` in the env var list |
+| `.github/workflows/run-workflow.yaml` | `SCARF_DAPR_API_TOKEN` env var; pixel arrays in the start payload |
+| `CollectDaprStats/secrets.json.example` | `"ScarfDaprApiToken": ""` |
+| `README.md` | Scarf in the data-source list; `SCARF_DAPR_API_TOKEN` in the env var list |
 
 **Unchanged:** `CollectDaprStats/Program.cs` — both activities take `IHttpClientFactory`, `PostgresOutput` and `DaprClient`, all already registered, and `AddDaprWorkflow()` discovers activities by convention. `CollectDaprStats/PostgresOuput.cs` — `InsertAsync` already takes arbitrary SQL and a parameter array.
 
@@ -944,7 +944,7 @@ namespace DaprStats
             "https://api.scarf.sh/v3/insights/Dapr/aggregations/export";
 
         private const string SecretStore = "secretstore";
-        private const string ApiTokenSecret = "SCARFAPITOKEN";
+        private const string ApiTokenSecret = "SCARF_DAPR_API_TOKEN";
 
         private const string TableName = "scarf_building_block_views";
 
@@ -1220,7 +1220,7 @@ namespace DaprStats
             "https://api.scarf.sh/v3/insights/Dapr/aggregations/export";
 
         private const string SecretStore = "secretstore";
-        private const string ApiTokenSecret = "SCARFAPITOKEN";
+        private const string ApiTokenSecret = "SCARF_DAPR_API_TOKEN";
 
         private const string TableName = "scarf_company_views";
 
@@ -1590,7 +1590,7 @@ Content-Type: application/json
 
 - [ ] **Step 6: Run the dry-run entry**
 
-Set `SCARFAPITOKEN` in the terminal, start the app with `dapr run -f .`, then send the `SkipStorage: true` entry.
+Set `SCARF_DAPR_API_TOKEN` in the terminal, start the app with `dapr run -f .`, then send the `SkipStorage: true` entry.
 
 Expected: six log lines, three per activity, with Monday dates and non-zero counts. For example:
 
@@ -1652,7 +1652,7 @@ No schedule change. `run-workflow.yaml` already runs at `0 9 * * 1` — 10:00 CE
 
 - [ ] **Step 1: Add the secret to the example file**
 
-In `CollectDaprStats/secrets.json.example`, add a `ScarfApiToken` entry after `DataDogAppKey`:
+In `CollectDaprStats/secrets.json.example`, add a `ScarfDaprApiToken` entry after `DataDogAppKey`:
 
 ```json
 {
@@ -1662,7 +1662,7 @@ In `CollectDaprStats/secrets.json.example`, add a `ScarfApiToken` entry after `D
     "DaprStatsGitHubPAT" : "",
     "DataDogApiKey" : "",
     "DataDogAppKey" : "",
-    "ScarfApiToken" : ""
+    "ScarfDaprApiToken" : ""
 }
 ```
 
@@ -1679,7 +1679,7 @@ In `README.md`, add to the data-source list, after the GitHub entry:
 And add to the environment variable list:
 
 ```markdown
-- `export SCARFAPITOKEN=<SCARF_API_TOKEN_VALUE>`
+- `export SCARF_DAPR_API_TOKEN=<SCARF_API_TOKEN_VALUE>`
 ```
 
 - [ ] **Step 3: Add the secret to the CI workflow**
@@ -1687,7 +1687,7 @@ And add to the environment variable list:
 In `.github/workflows/run-workflow.yaml`, add to the `env:` block after `DATADOGAPPKEY`:
 
 ```yaml
-  SCARFAPITOKEN: ${{ secrets.SCARFAPITOKEN }}
+  SCARF_DAPR_API_TOKEN: ${{ secrets.SCARF_DAPR_API_TOKEN }}
 ```
 
 - [ ] **Step 4: Add the pixel arrays to the CI payload**
@@ -1708,7 +1708,7 @@ Expected: `ok`.
 
 This cannot be done from here. Report to the user:
 
-> Create a repository secret named `SCARFAPITOKEN` in the `dapr-stats` GitHub repo settings before the next Monday run. Until it exists both Scarf activities throw on `GetSecretAsync` and the scheduled workflow reports failure.
+> Create a repository secret named `SCARF_DAPR_API_TOKEN` in the `dapr-stats` GitHub repo settings before the next Monday run. Until it exists both Scarf activities throw on `GetSecretAsync` and the scheduled workflow reports failure.
 
 - [ ] **Step 7: Run the full build and test suite**
 
