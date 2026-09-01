@@ -85,10 +85,8 @@ Content-Type: application/json
 
 ###
 ### Python packages with SkipStorage. The workflow must skip the check entirely,
-### so this completes in seconds with no 5-minute sleep.
-### Note: GetPythonPackageData ignores SkipStorage and inserts anyway (a
-### pre-existing quirk that npm and NuGet do not share), so rows are still
-### written. What is being verified here is that the check is skipped.
+### so this completes in seconds with no 5-minute sleep. No rows are written
+### either: verify with the python_dapr_latest_packages_view query above.
 ###
 // @name pythonskipstorage
 POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
