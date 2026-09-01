@@ -38,6 +38,11 @@ namespace DaprStats
                 throw new FormatException("Scarf response is not valid JSON.", ex);
             }
 
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                throw new FormatException("Scarf response is not a JSON object.");
+            }
+
             if (!root.TryGetProperty("data", out var data) ||
                 data.ValueKind != JsonValueKind.Array)
             {

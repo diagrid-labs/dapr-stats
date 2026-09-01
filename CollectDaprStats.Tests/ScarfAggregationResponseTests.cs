@@ -150,4 +150,13 @@ public class ScarfAggregationResponseTests
           "company_name":"A","company_domain":"a.com","total":1,"unique_origins":1}]}
         """));
     }
+
+    [Theory]
+    [InlineData("5")]
+    [InlineData("[]")]
+    [InlineData("\"oops\"")]
+    public void Parse_NonObjectJson_Throws(string nonObjectJson)
+    {
+        Assert.Throws<FormatException>(() => Parse(nonObjectJson));
+    }
 }
