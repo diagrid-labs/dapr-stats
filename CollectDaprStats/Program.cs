@@ -25,24 +25,7 @@ builder.Services.AddSingleton<DiscordRestClient>();
 builder.Services.AddSingleton(daprClient);
 builder.Services.AddSingleton<PostgresOutput>();
 builder.Services.AddSingleton<PackageDataChecker>();
-builder.Services.AddDaprWorkflow(options =>
-{
-    options.RegisterWorkflow<CollectorWorkflow>();
-    options.RegisterWorkflow<GitHubCollectorWorkflow>();
-    options.RegisterActivity<GetNuGetPackageData>();
-    options.RegisterActivity<GetNpmPackageData>();
-    options.RegisterActivity<GetPythonPackageData>();
-    options.RegisterActivity<CheckNuGetPackageData>();
-    options.RegisterActivity<CheckNpmPackageData>();
-    options.RegisterActivity<CheckPythonPackageData>();
-    options.RegisterActivity<GetDiscordData>();
-    options.RegisterActivity<GetGitHubRepoData>();
-    options.RegisterActivity<GetGitHubReposForOrg>();
-    options.RegisterActivity<GetDockerHubData>();
-    options.RegisterActivity<GetDiagridDashboardData>();
-    options.RegisterActivity<GetDataDogRumData>();
-    options.RegisterActivity<GetDataDogRumUsers>();
-});
+builder.Services.AddDaprWorkflow();
 
 // Dapr uses a random port for gRPC by default. If we don't know what that port
 // is (because this app was started separate from dapr), then assume 50001.
