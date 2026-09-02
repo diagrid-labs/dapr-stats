@@ -35,7 +35,7 @@ on:
         type: boolean
         default: true
       collect_datadog:
-        description: 'Collect Datadog RUM views and users'
+        description: 'Collect Datadog RUM views, users and identified users'
         required: false
         type: boolean
         default: true
@@ -84,6 +84,7 @@ env:
   # collect_dockerhub / collect_datadog / collect_scarf checkboxes.
   FIXED_DOCKERHUB_IMAGES: 'daprio/daprd,daprio/scheduler,daprio/operator,daprio/injector,daprio/sentry,daprio/placement'
   FIXED_DATADOG_RUM_SERVICES: 'dev-dashboard'
+  FIXED_DATADOG_IDENTIFIED_SERVICES: 'conductor-ui|conductor.r1.diagrid.io,conductor-ui|dapr-ops-dashboard.diagrid.io'
   FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS: '4848fb3b-3edb-4329-90a9-a9d79afff054'
   FIXED_SCARF_LEADERBOARD_PIXEL_IDS: '4848fb3b-3edb-4329-90a9-a9d79afff054,0f63416a-15c2-4ccd-bae0-001898f75f8f'
 
@@ -196,6 +197,7 @@ jobs:
           # three toggles are applied by blanking out the fixed lists.
           DOCKERHUB_CSV=""
           DATADOG_CSV=""
+          DATADOG_ID_CSV=""
           SCARF_BB_CSV=""
           SCARF_LB_CSV=""
           if [ "$COLLECT_DOCKERHUB" = "true" ]; then
@@ -203,6 +205,7 @@ jobs:
           fi
           if [ "$COLLECT_DATADOG" = "true" ]; then
             DATADOG_CSV="$FIXED_DATADOG_RUM_SERVICES"
+            DATADOG_ID_CSV="$FIXED_DATADOG_IDENTIFIED_SERVICES"
           fi
           if [ "$COLLECT_SCARF" = "true" ]; then
             SCARF_BB_CSV="$FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS"
@@ -224,6 +227,7 @@ jobs:
             --argjson python "$(csv_to_json "$PYTHON_CSV")" \
             --argjson dockerHub "$(csv_to_json "$DOCKERHUB_CSV")" \
             --argjson dataDog "$(csv_to_json "$DATADOG_CSV")" \
+            --argjson dataDogIdentified "$(csv_to_json "$DATADOG_ID_CSV")" \
             --argjson scarfBuildingBlock "$(csv_to_json "$SCARF_BB_CSV")" \
             --argjson scarfLeaderboard "$(csv_to_json "$SCARF_LB_CSV")" \
             --argjson discord "$COLLECT_DISCORD" \
@@ -240,6 +244,7 @@ jobs:
               CollectDiagridDashboardData: $diagrid,
               DockerHubImages: $dockerHub,
               DataDogRumServices: $dataDog,
+              DataDogRumIdentifiedServices: $dataDogIdentified,
               ScarfBuildingBlockPixelIds: $scarfBuildingBlock,
               ScarfLeaderboardPixelIds: $scarfLeaderboard,
               SkipStorage: $skipStorage

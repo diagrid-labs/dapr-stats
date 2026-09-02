@@ -20,6 +20,10 @@ At the moment the data sources include:
   - Weekly views of each Dapr building block documentation page, per company
   - Weekly company visit counts across both sites
 - Datadog RUM views and users for the `dev-dashboard` service
+- Datadog RUM authenticated sessions, identified users and customer
+  organisations for the `conductor-ui` service on `conductor.r1.diagrid.io` and
+  `dapr-ops-dashboard.diagrid.io`, including running totals of unique users and
+  unique organisations
 - Download count of the `diagrid-dashboard` container image on GitHub Container Registry
 
 The program is a .NET web service that's using Dapr workflow.
@@ -64,7 +68,7 @@ The [Run CollectorWorkflow](.github/workflows/run-workflow.yaml) workflow runs o
 | `npm_packages` | `all` / `none` / list | `all` | npm downloads: `@dapr/dapr`, nothing, or the names you give |
 | `python_packages` | `all` / `none` / list | `all` | PyPI downloads: the four standard packages, nothing, or the names you give |
 | `collect_dockerhub` | checkbox | on | Docker Hub pulls for the `daprio/*` images |
-| `collect_datadog` | checkbox | on | Datadog RUM views and users |
+| `collect_datadog` | checkbox | on | Datadog RUM views and users, plus `conductor-ui` authenticated sessions and identified users |
 | `collect_scarf` | checkbox | on | Scarf building block page views and company visits |
 | `collect_discord` | checkbox | on | Discord data |
 | `collect_github` | checkbox | on | GitHub data for the dapr org |

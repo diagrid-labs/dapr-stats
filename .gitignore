@@ -11,3 +11,6 @@ secrets.json
 # Scratch fixtures (contain real RUM anonymous user ids)
 scratch/
 .dd-keys.env
+
+# Subagent-driven-development scratch (ledgers, briefs, review packages)
+.superpowers/

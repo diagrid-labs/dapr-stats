@@ -147,6 +147,118 @@ CREATE TABLE datadog_rum_users (
     CONSTRAINT datadog_rum_users_service_user_unique UNIQUE (service, user_anonymous_id)
 );
 
+-- unique_user_count and org_count are NOT additive: summing either across
+-- weeks double-counts anyone active in more than one week. For cumulative
+-- figures use datadog_rum_identified_users_view.total_users / total_orgs.
+--
+-- Both are DataDog `cardinality` aggregations, which are ESTIMATES. They are
+-- exact at current volume (tens of users per week); a small divergence from a
+-- registry-derived count at higher volume is an approximation artifact, not a
+-- defect.
+--
+-- org_count and the view's total_orgs count different populations and may
+-- disagree in either direction. org_count is every distinct
+-- @usr.organization seen in that week's sessions. total_orgs counts
+-- organisations attached to REGISTERED users, so it omits an org whose users
+-- all have a null user_organization, and it collapses a user who changed
+-- organisation onto their newest one. A week where org_count exceeds
+-- total_orgs is therefore expected, not a bug.
+-- unique_user_count comes from DataDog's `cardinality` aggregation, which is
+-- an estimate: exact at current volume (~29 users/week), but a small
+-- divergence from datadog_rum_identified_users_view's registry-based count is
+-- expected at higher volume, not a defect.
+CREATE TABLE datadog_rum_identified (
+    id SERIAL PRIMARY KEY,
+    service VARCHAR(255) NOT NULL,
+    env VARCHAR(255) NOT NULL,
+    week_start DATE NOT NULL,
+    session_count BIGINT NOT NULL,
+    unique_user_count BIGINT NOT NULL,
+    org_count BIGINT,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT datadog_rum_identified_week_unique
+        UNIQUE (service, env, week_start)
+);
+
+-- Holds real customer email addresses and names: the only PII in this database.
+-- Never print or log these values -- this repository is public and its GitHub
+-- Actions run logs are world-readable. Report from
+-- datadog_rum_identified_users_view, which exposes counts.
+CREATE TABLE datadog_rum_identified_users (
+    id SERIAL PRIMARY KEY,
+    service VARCHAR(255) NOT NULL,
+    env VARCHAR(255) NOT NULL,
+    user_id VARCHAR(128) NOT NULL,
+    user_email VARCHAR(320),
+    user_name VARCHAR(255),
+    user_organization VARCHAR(128),
+    install_date DATE,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT datadog_rum_identified_users_unique
+        UNIQUE (service, env, user_id)
+);
+
+---
+
+CREATE OR REPLACE VIEW datadog_rum_identified_users_view AS
+WITH first_week AS (
+    SELECT service, env, MIN(week_start) AS week_start
+    FROM datadog_rum_identified
+    GROUP BY service, env
+),
+seeded AS (
+    SELECT u.service,
+           u.env,
+           COALESCE(u.install_date, f.week_start) AS week_start,
+           u.user_email,
+           u.user_organization
+    FROM datadog_rum_identified_users u
+    JOIN first_week f
+      ON f.service = u.service AND f.env = u.env
+),
+user_weeks AS (
+    SELECT service,
+           env,
+           week_start,
+           COUNT(*) AS new_users,
+           COUNT(*) FILTER (
+               WHERE user_email IS NULL OR user_email NOT ILIKE '%@diagrid.io'
+           ) AS new_external_users
+    FROM seeded
+    GROUP BY service, env, week_start
+),
+-- An organisation is new in the week its FIRST user appeared, not in every
+-- week another of its users shows up. Counting distinct orgs per week would
+-- count the same org again each time it gained a user.
+org_first_week AS (
+    SELECT service, env, user_organization, MIN(week_start) AS week_start
+    FROM seeded
+    WHERE user_organization IS NOT NULL
+    GROUP BY service, env, user_organization
+),
+org_weeks AS (
+    SELECT service, env, week_start, COUNT(*) AS new_orgs
+    FROM org_first_week
+    GROUP BY service, env, week_start
+)
+-- Column ORDER matters here: CREATE OR REPLACE VIEW can only append columns,
+-- never insert or rename one, so new_orgs and total_orgs go last even though
+-- new_orgs would read better beside the other new_* columns. Reordering this
+-- list makes the next deployment fail with 42P16.
+SELECT u.service,
+       u.env,
+       u.week_start,
+       u.new_users,
+       u.new_external_users,
+       SUM(u.new_users) OVER w AS total_users,
+       SUM(u.new_external_users) OVER w AS total_external_users,
+       COALESCE(o.new_orgs, 0) AS new_orgs,
+       SUM(COALESCE(o.new_orgs, 0)) OVER w AS total_orgs
+FROM user_weeks u
+LEFT JOIN org_weeks o
+  ON o.service = u.service AND o.env = u.env AND o.week_start = u.week_start
+WINDOW w AS (PARTITION BY u.service, u.env ORDER BY u.week_start);
+
 ---
 
 CREATE OR REPLACE VIEW nuget_dapr_client_view AS
