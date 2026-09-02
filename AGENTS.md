@@ -14,7 +14,7 @@ A .NET 10 web service that uses Dapr Workflow to collect Dapr SDK and community 
 | Test | `dotnet test dapr-stats.sln` |
 | Run locally | `dapr run -f .`, then send a request from [local-tests.http](local-tests.http) |
 
-The test suite is 95 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of the activities or the workflow itself.
+The test suite is 115 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of the activities or the workflow itself.
 
 CI is two workflows: [build.yml](.github/workflows/build.yml) restores, builds and tests on every push and PR to `main`, and [run-workflow.yaml](.github/workflows/run-workflow.yaml) does the weekly collection.
 
@@ -47,7 +47,7 @@ Three Dapr components carry the infrastructure:
 
 1. Add `Get<Source>Data.cs` with a `WorkflowActivity<TInput, bool>` subclass. The input record's last parameter is `bool SkipStorage`, by convention.
 2. Guard every `InsertAsync` with `if (!input.SkipStorage)`. This is what makes dry runs safe.
-3. Add the list or flag to `CollectorWorkflowInput` in `CollectorWorkflow.cs` and guard the call site — lists with `.Length > 0`, flags with the bool. An empty list must mean "skip this source"; the GitHub Actions checkboxes rely on it.
+3. Add the list or flag to `CollectorWorkflowInput` in `CollectorWorkflow.cs` and guard the call site — lists with `.Length > 0`, flags with the bool. An empty list must mean "skip this source"; the GitHub Actions checkboxes rely on it. List entries can encode compound data (e.g. `service|env` pairs split on `|` in the workflow like `DockerHubImages` splits on `/`); guard with `?.Length > 0` when a payload field may be omitted entirely.
 4. Keep the workflow class deterministic: no `DateTime.Now`, no `Guid.NewGuid()`, no HTTP calls in `RunAsync`. `CollectionDate` is passed in from outside for exactly this reason, and all I/O belongs in activities. Use `context.CreateTimer`, never `Task.Delay`.
 5. Update all four of: `local-tests.http`, the `FIXED_*`/`DEFAULT_*` env values and inputs in `run-workflow.yaml`, the README data-source list, and `postgres/postgres_schema.psql`.
 
@@ -55,6 +55,16 @@ Three Dapr components carry the infrastructure:
 
 These are all verified in the current code, not guesses:
 
+- **`env` is a hostname on `conductor-ui`, not `prod`.** The `dev-dashboard`
+  collector filters `env:prod`; that matches nothing on `conductor-ui`, whose
+  `env` tag carries the deployment host (`conductor.r1.diagrid.io`,
+  `dapr-ops-dashboard.diagrid.io`, and staging/local variants). This is why the
+  identified-user collector takes `service|env` pairs rather than just a service
+  name. Note also that `dapr-ops-dashboard.diagrid.io` reports under the
+  `conductor-ui` service.
+- **`@usr.anonymous_id` is not an identity on `conductor-ui`.** It is roughly
+  per-session there (1411 sessions produced 1020 ids), unlike on
+  `dev-dashboard`. Identified-user counting uses `@usr.id`.
 - **`nuget_dapr_client` is a misnomer.** That one table holds all nine NuGet packages, distinguished by the `package_name` column.
 - **`PostgresOuput.cs`** is misspelled on disk; the class inside is `PostgresOutput`.
 - **Scarf's owner slug is case-sensitive.** `https://api.scarf.sh/v3/insights/Dapr/...` — the v3 endpoints return `404 Organization not found` for `dapr`. The comment in `GetScarfBuildingBlockViews.cs` says as much.
@@ -67,6 +77,14 @@ These are all verified in the current code, not guesses:
 ## Database
 
 Neon Postgres 16, project `spring-pine-41263944`, database `daprstats`. The schema lives in `postgres/postgres_schema.psql`.
+
+`datadog_rum_identified_users` is the only table here holding PII: real customer
+email addresses and names. **This repository is public, so GitHub Actions run
+logs are world-readable — never print or log a `@usr.id`, `@usr.email` or
+`@usr.name` value.** Report from `datadog_rum_identified_users_view`, which
+exposes counts. Deletion for an erasure request is
+`DELETE FROM datadog_rum_identified_users WHERE user_email = $1`, but it only
+sticks once that user falls outside the three-week lookback.
 
 There is no `psql` on this machine and the Neon CLI has no SQL subcommand, so run queries over Neon's HTTP endpoint:
 
