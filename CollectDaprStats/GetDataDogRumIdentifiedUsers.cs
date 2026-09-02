@@ -18,10 +18,26 @@ namespace DaprStats
         // datadog_rum_identified row for the view to seed against.
         private const int WeeksPerRun = 3;
 
-        // DataDog's default maximum for field grouping. Current volume is ~29
-        // users per week on the busier host, so a single week is nowhere near
-        // it.
+        // DataDog's default maximum for single-dimension field grouping. Peak
+        // observed volume is ~29 users per week on the busier host, so a single
+        // week is nowhere near it.
         private const int GroupByLimit = 1000;
+
+        // DataDog caps the *product* of every facet's limit in a group_by at
+        // 10,000 groups total ("Cannot generate more than 10000 groups across
+        // all dimensions"), not 10,000 per facet. A two-facet request grouped
+        // by [id, attribute] must keep limit(id) * limit(attribute) under that
+        // cap -- 1000 * 1000 blew it (confirmed against the live API: every
+        // such request returned HTTP 400). 500 * 5 = 2500 is comfortably clear.
+        // 500 leaves roughly an order of magnitude of headroom over the ~29
+        // users per week (65 over a 30-day window) this service sees on its
+        // busiest host. 5 is generous for how many distinct emails or names one
+        // id could show in a single week -- normally exactly one of each --
+        // whether DataDog treats that second limit as nested per parent bucket
+        // or as a flat combination count, and the error message does not say
+        // which, so the fix must hold under either reading.
+        private const int AttributeUserGroupByLimit = 500;
+        private const int AttributeGroupByLimit = 5;
 
         private const string AggregateUrl =
             "https://api.datadoghq.com/api/v2/rum/analytics/aggregate";
@@ -78,14 +94,12 @@ namespace DaprStats
                         allSucceeded = false;
                     }
 
-                    if (users.Count >= GroupByLimit)
-                    {
-                        Console.WriteLine(
-                            $"WARNING: week {week.WeekStart:yyyy-MM-dd} returned " +
-                            $"{users.Count} users, at the group-by limit of " +
-                            $"{GroupByLimit}. Users are being dropped.");
-                    }
-
+                    // Per-request truncation warnings (one per request, each
+                    // against the limit that request was given) are logged
+                    // inside PostAsync, since the merged list here is always
+                    // exactly as long as the "ids" request's result and cannot
+                    // by itself reveal whether "emails" or "names" was
+                    // truncated at its own, smaller limit.
                     collected.Add((week.WeekStart, users));
                 }
                 catch (Exception ex)
@@ -153,8 +167,9 @@ namespace DaprStats
                 string apiKey, string appKey)
         {
             var ids = await PostAsync(
-                BuildGroupedBody(input, week, [DataDogRumIdentifiedUsers.UserIdFacet]),
-                apiKey, appKey);
+                BuildGroupedBody(input, week,
+                    [(DataDogRumIdentifiedUsers.UserIdFacet, GroupByLimit)]),
+                "ids", GroupByLimit, week, apiKey, appKey);
 
             IReadOnlyList<DataDogRumIdentifiedUsers.Observation> emails;
             IReadOnlyList<DataDogRumIdentifiedUsers.Observation> names;
@@ -162,12 +177,14 @@ namespace DaprStats
             {
                 emails = await PostAsync(
                     BuildGroupedBody(input, week,
-                        [DataDogRumIdentifiedUsers.UserIdFacet, DataDogRumIdentifiedUsers.EmailFacet]),
-                    apiKey, appKey);
+                        [(DataDogRumIdentifiedUsers.UserIdFacet, AttributeUserGroupByLimit),
+                         (DataDogRumIdentifiedUsers.EmailFacet, AttributeGroupByLimit)]),
+                    "emails", AttributeUserGroupByLimit, week, apiKey, appKey);
                 names = await PostAsync(
                     BuildGroupedBody(input, week,
-                        [DataDogRumIdentifiedUsers.UserIdFacet, DataDogRumIdentifiedUsers.NameFacet]),
-                    apiKey, appKey);
+                        [(DataDogRumIdentifiedUsers.UserIdFacet, AttributeUserGroupByLimit),
+                         (DataDogRumIdentifiedUsers.NameFacet, AttributeGroupByLimit)]),
+                    "names", AttributeUserGroupByLimit, week, apiKey, appKey);
             }
             catch (Exception ex)
             {
@@ -219,14 +236,21 @@ namespace DaprStats
             return byId;
         }
 
+        // Each facet carries its own limit: request "ids" needs only
+        // (id, GroupByLimit); requests "emails"/"names" need the smaller
+        // (id, AttributeUserGroupByLimit) and (attribute, AttributeGroupByLimit)
+        // pair so their product stays under DataDog's 10,000-groups cap. A
+        // single limit shared across every facet is exactly the bug this method
+        // exists to prevent -- do not collapse this back to `string[] facets`.
         private static string BuildGroupedBody(
-            DataDogRumIdentifiedInput input, IsoWeek.Window week, string[] facets)
+            DataDogRumIdentifiedInput input, IsoWeek.Window week,
+            (string Facet, int Limit)[] facets)
         {
             return JsonSerializer.Serialize(new
             {
                 compute = new object[] { new { aggregation = "count", type = "total" } },
                 group_by = facets
-                    .Select(facet => new { facet, limit = GroupByLimit })
+                    .Select(f => new { facet = f.Facet, limit = f.Limit })
                     .ToArray(),
                 filter = new
                 {
@@ -239,8 +263,15 @@ namespace DaprStats
             });
         }
 
+        // `limit` is the limit that most directly bounds this request's
+        // coverage -- for "ids" that is the single id-facet limit; for
+        // "emails"/"names" it is the id-facet limit (AttributeUserGroupByLimit),
+        // since that is what determines whether every id got a chance at an
+        // attribute. A bucket count at or above it means the response may be
+        // truncated, so callers relying on it for full coverage should know.
         private async Task<IReadOnlyList<DataDogRumIdentifiedUsers.Observation>> PostAsync(
-            string body, string apiKey, string appKey)
+            string body, string requestName, int limit, IsoWeek.Window week,
+            string apiKey, string appKey)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, AggregateUrl)
             {
@@ -261,7 +292,19 @@ namespace DaprStats
                     Encoding.UTF8.GetString(payload));
             }
 
-            return DataDogRumIdentifiedUsers.ParseUsers(payload);
+            var users = DataDogRumIdentifiedUsers.ParseUsers(payload);
+
+            if (users.Count >= limit)
+            {
+                // Counts, week and request name only -- never a user id, email
+                // or name.
+                Console.WriteLine(
+                    $"WARNING: \"{requestName}\" request for week " +
+                    $"{week.WeekStart:yyyy-MM-dd} returned {users.Count} buckets, " +
+                    $"at the group-by limit of {limit}. Results may be truncated.");
+            }
+
+            return users;
         }
 
         private async Task StoreAsync(
