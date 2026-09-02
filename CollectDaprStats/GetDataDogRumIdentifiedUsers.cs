@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Dapr.Client;
@@ -121,13 +121,14 @@ namespace DaprStats
 
             var withoutInstallDate = entries.Count(e => e.InstallDate is null);
             var withoutEmail = entries.Count(e => e.Email is null);
+            var withoutOrg = entries.Count(e => e.Organization is null);
 
             // Counts only -- never an id, email or name.
             Console.WriteLine(
                 $"DataDog RUM identified users {input.Service}@{input.Env}: " +
                 $"{entries.Count} distinct users over {collected.Count} weeks " +
                 $"({withoutInstallDate} with no install date, " +
-                $"{withoutEmail} with no email)");
+                $"{withoutEmail} with no email, {withoutOrg} with no org)");
 
             if (!input.SkipStorage)
             {
@@ -140,17 +141,17 @@ namespace DaprStats
             return allSucceeded;
         }
 
-        // Three requests, not one. A multi-facet group_by drops events that are
+        // Four requests, not one. A multi-facet group_by drops events that are
         // missing any one of the grouped facets -- confirmed empirically against
         // the live API -- so any conjunctive grouping (e.g. one request grouped
-        // by [id, email, name]) would silently lose every user missing at least
-        // one of those attributes, including their id. Request "ids", grouped by
-        // id alone, is therefore the authoritative set: every id it returns
-        // produces an Observation. "emails" and "names" are each grouped by
-        // [id, <attribute>] and only supply that one attribute, left-joined onto
-        // "ids" by user id -- an id absent from either simply keeps a null
-        // attribute instead of being dropped. Do not "simplify" this back to one
-        // request.
+        // by [id, email, name, organization]) would silently lose every user
+        // missing at least one of those attributes, including their id. Request
+        // "ids", grouped by id alone, is therefore the authoritative set: every
+        // id it returns produces an Observation. "emails", "names" and "orgs"
+        // are each grouped by [id, <attribute>] and only supply that one
+        // attribute, left-joined onto "ids" by user id -- an id absent from any
+        // of them simply keeps a null attribute instead of being dropped. Do not
+        // "simplify" this back to one request.
         //
         // The two failure boundaries below are deliberately different sizes.
         // Request "ids" failing must fail the whole week -- the outer per-week
@@ -158,10 +159,10 @@ namespace DaprStats
         // nothing to register. But "emails"/"names" failing must NOT discard the
         // id set that already succeeded: an id set collected only in the oldest
         // week of the 3-week lookback would otherwise be lost permanently, since
-        // that week rolls out of range before the next run. So only the two
+        // that week rolls out of range before the next run. So only the three
         // attribute requests are wrapped in an inner try/catch, and a failure
-        // there falls back to the ids-only observations (null email and name,
-        // which a later run's coalesce can fill in) rather than losing the week.
+        // there falls back to the ids-only observations (null attributes, which
+        // a later run's coalesce can fill in) rather than losing the week.
         private async Task<(IReadOnlyList<DataDogRumIdentifiedUsers.Observation> Users,
             bool AttributesDegraded)> FetchWeekAsync(
                 DataDogRumIdentifiedInput input, IsoWeek.Window week,
@@ -174,6 +175,7 @@ namespace DaprStats
 
             IReadOnlyList<DataDogRumIdentifiedUsers.Observation> emails;
             IReadOnlyList<DataDogRumIdentifiedUsers.Observation> names;
+            IReadOnlyList<DataDogRumIdentifiedUsers.Observation> orgs;
             try
             {
                 emails = await PostAsync(
@@ -186,6 +188,11 @@ namespace DaprStats
                         [(DataDogRumIdentifiedUsers.UserIdFacet, AttributeUserGroupByLimit),
                          (DataDogRumIdentifiedUsers.NameFacet, AttributeGroupByLimit)]),
                     "names", AttributeUserGroupByLimit, week, apiKey, appKey);
+                orgs = await PostAsync(
+                    BuildGroupedBody(input, week,
+                        [(DataDogRumIdentifiedUsers.UserIdFacet, AttributeUserGroupByLimit),
+                         (DataDogRumIdentifiedUsers.OrganizationFacet, AttributeGroupByLimit)]),
+                    "orgs", AttributeUserGroupByLimit, week, apiKey, appKey);
             }
             catch (Exception ex)
             {
@@ -202,12 +209,14 @@ namespace DaprStats
 
             var emailById = FirstNonNullByUserId(emails, u => u.Email);
             var nameById = FirstNonNullByUserId(names, u => u.Name);
+            var orgById = FirstNonNullByUserId(orgs, u => u.Organization);
 
             var users = ids
                 .Select(u => new DataDogRumIdentifiedUsers.Observation(
                     u.UserId,
                     emailById.TryGetValue(u.UserId, out var email) ? email : null,
-                    nameById.TryGetValue(u.UserId, out var name) ? name : null))
+                    nameById.TryGetValue(u.UserId, out var name) ? name : null,
+                    orgById.TryGetValue(u.UserId, out var org) ? org : null))
                 .ToList();
 
             return (users, false);
@@ -320,11 +329,14 @@ namespace DaprStats
             // an attribute was absent from erasing a known value.
             var sqlText =
                 $"insert into {tableName} " +
-                "(service, env, user_id, user_email, user_name, install_date, collection_date) " +
-                "values ($1, $2, $3, $4, $5, $6::date, $7) " +
+                "(service, env, user_id, user_email, user_name, user_organization, " +
+                " install_date, collection_date) " +
+                "values ($1, $2, $3, $4, $5, $6, $7::date, $8) " +
                 "on conflict (service, env, user_id) do update " +
                 $"set user_email = coalesce(excluded.user_email, {tableName}.user_email), " +
-                $"    user_name = coalesce(excluded.user_name, {tableName}.user_name)";
+                $"    user_name = coalesce(excluded.user_name, {tableName}.user_name), " +
+                $"    user_organization = " +
+                $"        coalesce(excluded.user_organization, {tableName}.user_organization)";
 
             var sqlParameters = new object[]
             {
@@ -333,6 +345,7 @@ namespace DaprStats
                 entry.UserId,
                 entry.Email!,
                 entry.Name!,
+                entry.Organization!,
                 entry.InstallDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)!,
                 DateTime.UtcNow
             };

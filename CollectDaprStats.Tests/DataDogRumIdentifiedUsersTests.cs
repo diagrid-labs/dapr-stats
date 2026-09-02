@@ -18,9 +18,11 @@ public class DataDogRumIdentifiedUsersParseUsersTests
               "meta": { "status": "done" },
               "data": {
                 "buckets": [
-                  { "by": { "@usr.id": "u1", "@usr.email": "a@example.com", "@usr.name": "Ada" },
+                  { "by": { "@usr.id": "u1", "@usr.email": "a@example.com", "@usr.name": "Ada",
+                            "@usr.organization": "org-1" },
                     "computes": { "c0": 7 } },
-                  { "by": { "@usr.id": "u2", "@usr.email": "b@example.com", "@usr.name": "Bo" },
+                  { "by": { "@usr.id": "u2", "@usr.email": "b@example.com", "@usr.name": "Bo",
+                            "@usr.organization": "org-2" },
                     "computes": { "c0": 2 } }
                 ]
               }
@@ -30,10 +32,29 @@ public class DataDogRumIdentifiedUsersParseUsersTests
         Assert.Equal(
             new[]
             {
-                new DataDogRumIdentifiedUsers.Observation("u1", "a@example.com", "Ada"),
-                new DataDogRumIdentifiedUsers.Observation("u2", "b@example.com", "Bo"),
+                new DataDogRumIdentifiedUsers.Observation("u1", "a@example.com", "Ada", "org-1"),
+                new DataDogRumIdentifiedUsers.Observation("u2", "b@example.com", "Bo", "org-2"),
             },
             users);
+    }
+
+    [Fact]
+    public void ParseUsers_BucketMissingOrganizationKey_YieldsNullOrganization()
+    {
+        var users = Parse("""
+            {
+              "data": {
+                "buckets": [
+                  { "by": { "@usr.id": "u1", "@usr.email": "a@example.com" },
+                    "computes": { "c0": 1 } }
+                ]
+              }
+            }
+            """);
+
+        var user = Assert.Single(users);
+        Assert.Equal("a@example.com", user.Email);
+        Assert.Null(user.Organization);
     }
 
     [Fact]
@@ -169,8 +190,8 @@ public class DataDogRumIdentifiedUsersDeriveEntriesTests
         params DataDogRumIdentifiedUsers.Observation[] users) => (weekStart, users);
 
     private static DataDogRumIdentifiedUsers.Observation User(
-        string id, string? email = null, string? name = null) =>
-        new(id, email, name);
+        string id, string? email = null, string? name = null, string? org = null) =>
+        new(id, email, name, org);
 
     [Fact]
     public void DeriveEntries_EarliestWeekWins()
@@ -254,6 +275,35 @@ public class DataDogRumIdentifiedUsersDeriveEntriesTests
         ]);
 
         Assert.Equal("a@example.com", entries.Single(e => e.UserId == "u1").Email);
+    }
+
+    [Fact]
+    public void DeriveEntries_NewestNonNullOrganizationWins()
+    {
+        // A user moving between organisations is the reason this follows the
+        // same newest-non-null rule as email rather than being fixed at first
+        // sight.
+        var entries = DataDogRumIdentifiedUsers.DeriveEntries(
+        [
+            Week(Week1, User("boundary")),
+            Week(Week2, User("u1", org: "org-old")),
+            Week(Week3, User("u1", org: "org-new")),
+        ]);
+
+        Assert.Equal("org-new", entries.Single(e => e.UserId == "u1").Organization);
+    }
+
+    [Fact]
+    public void DeriveEntries_NullOrganizationInNewestWeek_DoesNotEraseKnownOrganization()
+    {
+        var entries = DataDogRumIdentifiedUsers.DeriveEntries(
+        [
+            Week(Week1, User("boundary")),
+            Week(Week2, User("u1", org: "org-1")),
+            Week(Week3, User("u1")),
+        ]);
+
+        Assert.Equal("org-1", entries.Single(e => e.UserId == "u1").Organization);
     }
 
     [Fact]

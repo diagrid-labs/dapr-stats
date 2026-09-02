@@ -62,6 +62,13 @@ These are all verified in the current code, not guesses:
   identified-user collector takes `service|env` pairs rather than just a service
   name. Note also that `dapr-ops-dashboard.diagrid.io` reports under the
   `conductor-ui` service.
+- **RUM user attributes are named `@usr.organization` / `@usr.organizationName`**,
+  not `@usr.organization_id` or `@usr.tenant` — those do not exist and return
+  nothing, which once led to a spec claiming there was no organisation dimension
+  at all. Enumerate the real field names with
+  `ddsql_schema_search_unstructured_fields` on `public.dd.rum` rather than
+  guessing. `@usr.organization` is well populated; `@usr.organizationName` is
+  only partly populated and is not a reliable label.
 - **`@usr.anonymous_id` is not an identity on `conductor-ui`.** It is roughly
   per-session there (1411 sessions produced 1020 ids), unlike on
   `dev-dashboard`. Identified-user counting uses `@usr.id`.
@@ -79,7 +86,7 @@ These are all verified in the current code, not guesses:
 Neon Postgres 16, project `spring-pine-41263944`, database `daprstats`. The schema lives in `postgres/postgres_schema.psql`.
 
 `datadog_rum_identified_users` is the only table here holding PII: real customer
-email addresses and names. **This repository is public, so GitHub Actions run
+email addresses, names and organisation identifiers. **This repository is public, so GitHub Actions run
 logs are world-readable — never print or log a `@usr.id`, `@usr.email` or
 `@usr.name` value.** Report from `datadog_rum_identified_users_view`, which
 exposes counts. Deletion for an erasure request is

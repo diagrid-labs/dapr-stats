@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Dapr.Client;
@@ -53,7 +53,7 @@ namespace DaprStats
             {
                 try
                 {
-                    var (sessionCount, uniqueUserCount) =
+                    var (sessionCount, uniqueUserCount, orgCount) =
                         await FetchWeekAsync(input, week, apiKey, appKey);
 
                     // Counts only. Never log an id, email or name: this
@@ -62,11 +62,12 @@ namespace DaprStats
                     Console.WriteLine(
                         $"DataDog RUM identified {input.Service}@{input.Env} " +
                         $"week {week.WeekStart:yyyy-MM-dd}: {sessionCount} sessions, " +
-                        $"{uniqueUserCount} unique users");
+                        $"{uniqueUserCount} unique users, {orgCount} unique orgs");
 
                     if (!input.SkipStorage)
                     {
-                        await StoreAsync(input, week.WeekStart, sessionCount, uniqueUserCount);
+                        await StoreAsync(
+                            input, week.WeekStart, sessionCount, uniqueUserCount, orgCount);
                     }
                 }
                 catch (Exception ex)
@@ -82,7 +83,8 @@ namespace DaprStats
             return allSucceeded;
         }
 
-        private async Task<(long SessionCount, long UniqueUserCount)> FetchWeekAsync(
+        private async Task<(long SessionCount, long UniqueUserCount, long OrgCount)>
+            FetchWeekAsync(
             DataDogRumIdentifiedInput input, IsoWeek.Window week,
             string apiKey, string appKey)
         {
@@ -100,7 +102,13 @@ namespace DaprStats
                     {
                         aggregation = "cardinality",
                         type = "total",
-                        metric = "@usr.id"
+                        metric = DataDogRumIdentifiedUsers.UserIdFacet
+                    },
+                    new
+                    {
+                        aggregation = "cardinality",
+                        type = "total",
+                        metric = DataDogRumIdentifiedUsers.OrganizationFacet
                     }
                 },
                 filter = new
@@ -130,14 +138,15 @@ namespace DaprStats
                     Encoding.UTF8.GetString(payload));
             }
 
-            // Same response shape as the dev-dashboard collector: c0 a count,
-            // c1 a cardinality. The parser is reused as-is.
-            return DataDogRumResponse.Parse(payload);
+            // c0 a count, c1 the distinct-user cardinality, c2 the
+            // distinct-organisation cardinality, keyed positionally by the
+            // order of the computes above.
+            return DataDogRumIdentifiedResponse.Parse(payload);
         }
 
         private async Task StoreAsync(
             DataDogRumIdentifiedInput input, DateOnly weekStart,
-            long sessionCount, long uniqueUserCount)
+            long sessionCount, long uniqueUserCount, long orgCount)
         {
             const string tableName = "datadog_rum_identified";
 
@@ -146,11 +155,13 @@ namespace DaprStats
             // overwriting corrects instead of duplicating.
             var sqlText =
                 $"insert into {tableName} " +
-                "(service, env, week_start, session_count, unique_user_count, collection_date) " +
-                "values ($1, $2, $3::date, $4, $5, $6) " +
+                "(service, env, week_start, session_count, unique_user_count, " +
+                " org_count, collection_date) " +
+                "values ($1, $2, $3::date, $4, $5, $6, $7) " +
                 "on conflict (service, env, week_start) do update " +
                 "set session_count = excluded.session_count, " +
                 "    unique_user_count = excluded.unique_user_count, " +
+                "    org_count = excluded.org_count, " +
                 "    collection_date = excluded.collection_date";
 
             var sqlParameters = new object[]
@@ -160,6 +171,7 @@ namespace DaprStats
                 weekStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 sessionCount,
                 uniqueUserCount,
+                orgCount,
                 DateTime.UtcNow
             };
 

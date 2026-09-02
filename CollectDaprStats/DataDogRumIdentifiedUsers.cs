@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace DaprStats
 {
@@ -16,6 +16,7 @@ namespace DaprStats
         public const string UserIdFacet = "@usr.id";
         public const string EmailFacet = "@usr.email";
         public const string NameFacet = "@usr.name";
+        public const string OrganizationFacet = "@usr.organization";
 
         // Complete ISO weeks fetched per run, shared by every activity that
         // collects identified-user data (the aggregate and the registry) so
@@ -47,11 +48,13 @@ namespace DaprStats
             $"@type:session @session.type:user service:{service} env:{env} @usr.id:*";
 
         /// <summary>One bucket of one week's grouped response.</summary>
-        public sealed record Observation(string UserId, string? Email, string? Name);
+        public sealed record Observation(
+            string UserId, string? Email, string? Name, string? Organization);
 
         /// <summary>One row of the registry.</summary>
         public sealed record Entry(
-            string UserId, string? Email, string? Name, DateOnly? InstallDate);
+            string UserId, string? Email, string? Name, string? Organization,
+            DateOnly? InstallDate);
 
         /// <summary>
         /// The users in one week's grouped aggregate response. Buckets with no
@@ -96,7 +99,10 @@ namespace DaprStats
                 }
 
                 users.Add(new Observation(
-                    userId, ReadFacet(by, EmailFacet), ReadFacet(by, NameFacet)));
+                    userId,
+                    ReadFacet(by, EmailFacet),
+                    ReadFacet(by, NameFacet),
+                    ReadFacet(by, OrganizationFacet)));
             }
 
             return users;
@@ -104,7 +110,7 @@ namespace DaprStats
 
         /// <summary>
         /// One entry per distinct id: the start of the earliest ISO week it was
-        /// observed in, and the newest known email and name.
+        /// observed in, and the newest known email, name and organisation.
         /// </summary>
         /// <param name="weeksOldestFirst">
         /// Must be ordered oldest week first. Weeks with no users are allowed.
@@ -120,7 +126,8 @@ namespace DaprStats
             IReadOnlyList<(DateOnly WeekStart, IReadOnlyList<Observation> Users)> weeksOldestFirst)
         {
             var firstSeen = new Dictionary<string, DateOnly>();
-            var attributes = new Dictionary<string, (string? Email, string? Name)>();
+            var attributes =
+                new Dictionary<string, (string? Email, string? Name, string? Organization)>();
             DateOnly? boundary = null;
 
             foreach (var (weekStart, users) in weeksOldestFirst)
@@ -142,8 +149,10 @@ namespace DaprStats
                     // newest non-null value wins, and a week where an attribute
                     // was absent cannot erase one that is known.
                     attributes.TryGetValue(user.UserId, out var known);
-                    attributes[user.UserId] =
-                        (user.Email ?? known.Email, user.Name ?? known.Name);
+                    attributes[user.UserId] = (
+                        user.Email ?? known.Email,
+                        user.Name ?? known.Name,
+                        user.Organization ?? known.Organization);
                 }
             }
 
@@ -152,6 +161,7 @@ namespace DaprStats
                     kv.Key,
                     attributes[kv.Key].Email,
                     attributes[kv.Key].Name,
+                    attributes[kv.Key].Organization,
                     kv.Value == boundary ? null : kv.Value))
                 .ToList();
         }
