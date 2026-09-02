@@ -216,6 +216,20 @@ seeded AS (
     JOIN first_week f
       ON f.service = u.service AND f.env = u.env
 ),
+-- The row spine. Every COLLECTED week appears, not just the weeks in which
+-- some user was first seen -- otherwise a week with real sessions but no new
+-- users produces no row at all, and its session_count has nowhere to land.
+-- dapr-ops-dashboard had exactly that: three collected weeks, one view row.
+-- Keying on collected weeks alone would be simpler, but a user whose
+-- install_date week somehow had no aggregate row (an aggregate write failing
+-- while the registry write succeeded) would then vanish from the view and
+-- undercount total_users. The union cannot lose a user; session_count simply
+-- comes back NULL for such a week.
+week_spine AS (
+    SELECT service, env, week_start FROM datadog_rum_identified
+    UNION
+    SELECT service, env, week_start FROM seeded
+),
 user_weeks AS (
     SELECT service,
            env,
@@ -242,22 +256,38 @@ org_weeks AS (
     GROUP BY service, env, week_start
 )
 -- Column ORDER matters here: CREATE OR REPLACE VIEW can only append columns,
--- never insert or rename one, so new_orgs and total_orgs go last even though
--- new_orgs would read better beside the other new_* columns. Reordering this
--- list makes the next deployment fail with 42P16.
-SELECT u.service,
-       u.env,
-       u.week_start,
-       u.new_users,
-       u.new_external_users,
-       SUM(u.new_users) OVER w AS total_users,
-       SUM(u.new_external_users) OVER w AS total_external_users,
+-- never insert or rename one, so anything added must go at the end however
+-- much better it would read elsewhere. Reordering this list makes the next
+-- deployment fail with 42P16.
+--
+-- Mind the provenance mix in these columns. new_*/total_* are derived from the
+-- registry and are exact counts of registered users and organisations, with
+-- the external variants excluding @diagrid.io. session_count,
+-- unique_user_count and org_count are copied from datadog_rum_identified and
+-- come from DataDog `cardinality` aggregations over ALL authenticated
+-- accounts, internal included, with no external variant available. Charting
+-- unique_user_count against total_external_users compares two different
+-- populations measured two different ways.
+SELECT s.service,
+       s.env,
+       s.week_start,
+       COALESCE(u.new_users, 0) AS new_users,
+       COALESCE(u.new_external_users, 0) AS new_external_users,
+       SUM(COALESCE(u.new_users, 0)) OVER w AS total_users,
+       SUM(COALESCE(u.new_external_users, 0)) OVER w AS total_external_users,
        COALESCE(o.new_orgs, 0) AS new_orgs,
-       SUM(COALESCE(o.new_orgs, 0)) OVER w AS total_orgs
-FROM user_weeks u
+       SUM(COALESCE(o.new_orgs, 0)) OVER w AS total_orgs,
+       a.session_count,
+       a.unique_user_count,
+       a.org_count
+FROM week_spine s
+LEFT JOIN user_weeks u
+  ON u.service = s.service AND u.env = s.env AND u.week_start = s.week_start
 LEFT JOIN org_weeks o
-  ON o.service = u.service AND o.env = u.env AND o.week_start = u.week_start
-WINDOW w AS (PARTITION BY u.service, u.env ORDER BY u.week_start);
+  ON o.service = s.service AND o.env = s.env AND o.week_start = s.week_start
+LEFT JOIN datadog_rum_identified a
+  ON a.service = s.service AND a.env = s.env AND a.week_start = s.week_start
+WINDOW w AS (PARTITION BY s.service, s.env ORDER BY s.week_start);
 
 ---
 
