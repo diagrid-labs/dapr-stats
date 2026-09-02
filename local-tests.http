@@ -18,6 +18,7 @@ Content-Type: application/json
     "CollectDiagridDashboardData" : true,
     "DockerHubImages" : ["daprio/daprd", "daprio/scheduler", "daprio/operator", "daprio/injector", "daprio/sentry", "daprio/placement"],
     "DataDogRumServices" : ["dev-dashboard"],
+    "DataDogRumIdentifiedServices" : ["conductor-ui|conductor.r1.diagrid.io", "conductor-ui|dapr-ops-dashboard.diagrid.io"],
     "ScarfBuildingBlockPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
     "ScarfLeaderboardPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
     "SkipStorage": false
@@ -40,6 +41,7 @@ Content-Type: application/json
     "CollectDiagridDashboardData" : false,
     "DockerHubImages" : [],
     "DataDogRumServices" : [],
+    "DataDogRumIdentifiedServices" : [],
     "ScarfBuildingBlockPixelIds" : [],
     "ScarfLeaderboardPixelIds" : [],
     "SkipStorage": false
@@ -142,6 +144,35 @@ Content-Type: application/json
     "CollectDiagridDashboardData" : false,
     "DockerHubImages" : [],
     "DataDogRumServices" : ["dev-dashboard"],
+    "DataDogRumIdentifiedServices" : [],
+    "SkipStorage": true
+}
+
+###
+### DataDog RUM identified users only, no storage. Logs three complete ISO
+### weeks for both conductor-ui hosts and writes nothing. Completes in seconds.
+###
+### Check the log for two things:
+###  1. the aggregate activity's "unique users" and the registry activity's
+###     "distinct users" must be EQUAL for the same host -- both are counts of
+###     distinct @usr.id in the same weeks. A mismatch means the multi-facet
+###     group_by is dropping users (see the plan's Task 1).
+###  2. no email address, user name or user id anywhere in the output.
+###
+POST {{dapr_url}}/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID={{workflow_id}}
+Content-Type: application/json
+
+{
+    "CollectionDate" : "{{currentDate}}",
+    "NuGetPackageNames" : [],
+    "NpmPackageNames" : [],
+    "PythonPackageNames" : [],
+    "CollectDiscordData" : false,
+    "CollectGitHubData" : false,
+    "CollectDiagridDashboardData" : false,
+    "DockerHubImages" : [],
+    "DataDogRumServices" : [],
+    "DataDogRumIdentifiedServices" : ["conductor-ui|conductor.r1.diagrid.io", "conductor-ui|dapr-ops-dashboard.diagrid.io"],
     "SkipStorage": true
 }
 

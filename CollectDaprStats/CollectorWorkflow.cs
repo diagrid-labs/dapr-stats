@@ -83,6 +83,29 @@ namespace DaprStats
                 await Task.WhenAll(getDataDogRumDataTasks);
             }
 
+            if (input.DataDogRumIdentifiedServices?.Length > 0)
+            {
+                var getDataDogRumIdentifiedTasks = new List<Task>();
+                foreach (var pair in input.DataDogRumIdentifiedServices)
+                {
+                    // "service|env". env is a hostname on conductor-ui, not
+                    // `prod`, so it cannot be derived and has to be given.
+                    var parts = pair.Split('|');
+                    if (parts.Length == 2)
+                    {
+                        getDataDogRumIdentifiedTasks.Add(context.CallActivityAsync(
+                            nameof(GetDataDogRumIdentifiedData),
+                            new DataDogRumIdentifiedInput(
+                                parts[0], parts[1], input.SkipStorage)));
+                        getDataDogRumIdentifiedTasks.Add(context.CallActivityAsync(
+                            nameof(GetDataDogRumIdentifiedUsers),
+                            new DataDogRumIdentifiedInput(
+                                parts[0], parts[1], input.SkipStorage)));
+                    }
+                }
+                await Task.WhenAll(getDataDogRumIdentifiedTasks);
+            }
+
             var scarfTasks = new List<Task>();
 
             if (input.ScarfBuildingBlockPixelIds?.Length > 0)
@@ -252,6 +275,7 @@ namespace DaprStats
         bool CollectGitHubData,
         bool CollectDiagridDashboardData,
         string[] DataDogRumServices,
+        string[] DataDogRumIdentifiedServices,
         string[] ScarfBuildingBlockPixelIds,
         string[] ScarfLeaderboardPixelIds,
         bool SkipStorage);
