@@ -13,9 +13,9 @@ namespace DaprStats
     /// </remarks>
     public static class DataDogRumIdentifiedUsers
     {
-        private const string UserIdFacet = "@usr.id";
-        private const string EmailFacet = "@usr.email";
-        private const string NameFacet = "@usr.name";
+        public const string UserIdFacet = "@usr.id";
+        public const string EmailFacet = "@usr.email";
+        public const string NameFacet = "@usr.name";
 
         /// <summary>One bucket of one week's grouped response.</summary>
         public sealed record Observation(string UserId, string? Email, string? Name);
