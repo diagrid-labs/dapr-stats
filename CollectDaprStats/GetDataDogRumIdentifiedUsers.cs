@@ -13,11 +13,6 @@ namespace DaprStats
     public class GetDataDogRumIdentifiedUsers
         : WorkflowActivity<DataDogRumIdentifiedInput, bool>
     {
-        // The same three complete ISO weeks GetDataDogRumIdentifiedData
-        // collects, so install_date always lands on a Monday that has a
-        // datadog_rum_identified row for the view to seed against.
-        private const int WeeksPerRun = 3;
-
         // DataDog's default maximum for single-dimension field grouping. Peak
         // observed volume is ~29 users per week on the busier host, so a single
         // week is nowhere near it.
@@ -70,8 +65,14 @@ namespace DaprStats
             var appKey = appKeySecrets[AppKeySecret];
 
             // CompleteWeeksBefore returns oldest first, which is exactly the
-            // order DeriveEntries needs.
-            var weeks = IsoWeek.CompleteWeeksBefore(DateTime.UtcNow, WeeksPerRun);
+            // order DeriveEntries needs. WeeksPerRun is shared with
+            // GetDataDogRumIdentifiedData so both activities cover the same
+            // three weeks and the two tables stay consistent with each other;
+            // the view seeds a null install_date from the earliest week on
+            // record in datadog_rum_identified for that (service, env), not
+            // from any particular Monday this activity happens to touch.
+            var weeks = IsoWeek.CompleteWeeksBefore(
+                DateTime.UtcNow, DataDogRumIdentifiedUsers.WeeksPerRun);
             var collected =
                 new List<(DateOnly WeekStart,
                           IReadOnlyList<DataDogRumIdentifiedUsers.Observation> Users)>();
@@ -256,9 +257,9 @@ namespace DaprStats
                 {
                     from = Iso8601(week.From),
                     to = Iso8601(week.To),
-                    query =
-                        $"@type:session @session.type:user service:{input.Service} " +
-                        $"env:{input.Env} @usr.id:*"
+                    // Shared with GetDataDogRumIdentifiedData so the aggregate
+                    // and the registry always describe the same population.
+                    query = DataDogRumIdentifiedUsers.SearchQuery(input.Service, input.Env)
                 }
             });
         }

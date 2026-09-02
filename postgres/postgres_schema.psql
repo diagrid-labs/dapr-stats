@@ -150,6 +150,10 @@ CREATE TABLE datadog_rum_users (
 -- unique_user_count is NOT additive: summing it across weeks double-counts
 -- anyone active in more than one week. For a cumulative figure use
 -- datadog_rum_identified_users_view.total_users.
+-- unique_user_count comes from DataDog's `cardinality` aggregation, which is
+-- an estimate: exact at current volume (~29 users/week), but a small
+-- divergence from datadog_rum_identified_users_view's registry-based count is
+-- expected at higher volume, not a defect.
 CREATE TABLE datadog_rum_identified (
     id SERIAL PRIMARY KEY,
     service VARCHAR(255) NOT NULL,
@@ -201,13 +205,13 @@ SELECT service,
        week_start,
        COUNT(*) AS new_users,
        COUNT(*) FILTER (
-           WHERE user_email IS NULL OR user_email NOT LIKE '%@diagrid.io'
+           WHERE user_email IS NULL OR user_email NOT ILIKE '%@diagrid.io'
        ) AS new_external_users,
        SUM(COUNT(*)) OVER (
            PARTITION BY service, env ORDER BY week_start
        ) AS total_users,
        SUM(COUNT(*) FILTER (
-           WHERE user_email IS NULL OR user_email NOT LIKE '%@diagrid.io'
+           WHERE user_email IS NULL OR user_email NOT ILIKE '%@diagrid.io'
        )) OVER (
            PARTITION BY service, env ORDER BY week_start
        ) AS total_external_users

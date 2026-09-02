@@ -17,6 +17,35 @@ namespace DaprStats
         public const string EmailFacet = "@usr.email";
         public const string NameFacet = "@usr.name";
 
+        // Complete ISO weeks fetched per run, shared by every activity that
+        // collects identified-user data (the aggregate and the registry) so
+        // both always cover the same weeks. Three is the largest lookback
+        // that is always inside DataDog's 30-day RUM retention: at most 6
+        // days of the current partial week plus 21 days of complete weeks is
+        // 27 days. Four weeks reaches 34 days, and a week only partly inside
+        // the retention window returns a partial count that looks like a
+        // real low week.
+        public const int WeeksPerRun = 3;
+
+        /// <summary>
+        /// The DataDog RUM search query for authenticated sessions on a
+        /// signed-in service. Shared by every activity that collects
+        /// identified-user data, so the aggregate
+        /// (<c>datadog_rum_identified</c>) and the registry
+        /// (<c>datadog_rum_identified_users</c>) always describe the same
+        /// population -- a change here that adds a term, drops
+        /// <c>@session.type:user</c>, or changes the <c>env:</c> match cannot
+        /// silently apply to only one side.
+        /// </summary>
+        /// <remarks>
+        /// <c>@usr.id:*</c> is what makes this authenticated sessions only --
+        /// 78% of conductor-ui sessions have no identified user and are
+        /// excluded. <c>@session.type:user</c> excludes Synthetics traffic.
+        /// <paramref name="env"/> is a hostname on this service, not `prod`.
+        /// </remarks>
+        public static string SearchQuery(string service, string env) =>
+            $"@type:session @session.type:user service:{service} env:{env} @usr.id:*";
+
         /// <summary>One bucket of one week's grouped response.</summary>
         public sealed record Observation(string UserId, string? Email, string? Name);
 

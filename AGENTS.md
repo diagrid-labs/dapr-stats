@@ -14,7 +14,7 @@ A .NET 10 web service that uses Dapr Workflow to collect Dapr SDK and community 
 | Test | `dotnet test dapr-stats.sln` |
 | Run locally | `dapr run -f .`, then send a request from [local-tests.http](local-tests.http) |
 
-The test suite is 115 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of the activities or the workflow itself.
+The test suite is 117 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of the activities or the workflow itself.
 
 CI is two workflows: [build.yml](.github/workflows/build.yml) restores, builds and tests on every push and PR to `main`, and [run-workflow.yaml](.github/workflows/run-workflow.yaml) does the weekly collection.
 
@@ -85,6 +85,10 @@ logs are world-readable — never print or log a `@usr.id`, `@usr.email` or
 exposes counts. Deletion for an erasure request is
 `DELETE FROM datadog_rum_identified_users WHERE user_email = $1`, but it only
 sticks once that user falls outside the three-week lookback.
+`datadog_rum_identified.unique_user_count` is a DataDog `cardinality` estimate,
+exact at current volume, so a small divergence from
+`datadog_rum_identified_users_view`'s registry-based count is expected at
+higher volume, not a defect.
 
 There is no `psql` on this machine and the Neon CLI has no SQL subcommand, so run queries over Neon's HTTP endpoint:
 

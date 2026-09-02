@@ -13,13 +13,6 @@ namespace DaprStats
     public class GetDataDogRumIdentifiedData
         : WorkflowActivity<DataDogRumIdentifiedInput, bool>
     {
-        // Complete ISO weeks fetched per run. Three is the largest lookback that
-        // is always inside DataDog's 30-day RUM retention: at most 6 days of the
-        // current partial week plus 21 days of complete weeks is 27 days. Four
-        // weeks reaches 34 days, and a week only partly inside the retention
-        // window returns a partial count that looks like a real low week.
-        private const int WeeksPerRun = 3;
-
         // US1.
         private const string AggregateUrl =
             "https://api.datadoghq.com/api/v2/rum/analytics/aggregate";
@@ -51,7 +44,8 @@ namespace DaprStats
             var apiKey = apiKeySecrets[ApiKeySecret];
             var appKey = appKeySecrets[AppKeySecret];
 
-            var weeks = IsoWeek.CompleteWeeksBefore(DateTime.UtcNow, WeeksPerRun);
+            var weeks = IsoWeek.CompleteWeeksBefore(
+                DateTime.UtcNow, DataDogRumIdentifiedUsers.WeeksPerRun);
             var allSucceeded = true;
 
             // Each week is independent: one failure must not discard the others.
@@ -92,13 +86,10 @@ namespace DaprStats
             DataDogRumIdentifiedInput input, IsoWeek.Window week,
             string apiKey, string appKey)
         {
-            // @usr.id:* is what makes this authenticated sessions only -- 78% of
-            // conductor-ui sessions have no identified user and are excluded.
-            // @session.type:user excludes Synthetics traffic. env is a hostname
-            // on this service, not `prod`.
-            var searchQuery =
-                $"@type:session @session.type:user service:{input.Service} " +
-                $"env:{input.Env} @usr.id:*";
+            // Shared with GetDataDogRumIdentifiedUsers so the aggregate and the
+            // registry always describe the same population -- see
+            // DataDogRumIdentifiedUsers.SearchQuery for what each term does.
+            var searchQuery = DataDogRumIdentifiedUsers.SearchQuery(input.Service, input.Env);
 
             var body = JsonSerializer.Serialize(new
             {

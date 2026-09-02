@@ -301,3 +301,38 @@ public class DataDogRumIdentifiedUsersDeriveEntriesTests
         ]));
     }
 }
+
+public class DataDogRumIdentifiedUsersSearchQueryTests
+{
+    // Invented service and env -- not the real production values -- so this
+    // test does not need updating when a host changes.
+    private const string Service = "example-service";
+    private const string Env = "example-env.example.com";
+
+    [Fact]
+    public void SearchQuery_ReturnsExpectedString()
+    {
+        // Exact-string assertion: GetDataDogRumIdentifiedData and
+        // GetDataDogRumIdentifiedUsers both call this method so the aggregate
+        // and the registry always describe the same population. A future
+        // edit that changes the shared query for one of them changes it for
+        // both, and this test pins the current, known-correct shape.
+        var query = DataDogRumIdentifiedUsers.SearchQuery(Service, Env);
+
+        Assert.Equal(
+            $"@type:session @session.type:user service:{Service} env:{Env} @usr.id:*",
+            query);
+    }
+
+    [Fact]
+    public void SearchQuery_ContainsAllRequiredTerms()
+    {
+        var query = DataDogRumIdentifiedUsers.SearchQuery(Service, Env);
+
+        Assert.Contains("@type:session", query);
+        Assert.Contains("@session.type:user", query);
+        Assert.Contains("service:", query);
+        Assert.Contains("env:", query);
+        Assert.Contains("@usr.id:*", query);
+    }
+}
