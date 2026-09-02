@@ -147,6 +147,73 @@ CREATE TABLE datadog_rum_users (
     CONSTRAINT datadog_rum_users_service_user_unique UNIQUE (service, user_anonymous_id)
 );
 
+-- unique_user_count is NOT additive: summing it across weeks double-counts
+-- anyone active in more than one week. For a cumulative figure use
+-- datadog_rum_identified_users_view.total_users.
+CREATE TABLE datadog_rum_identified (
+    id SERIAL PRIMARY KEY,
+    service VARCHAR(255) NOT NULL,
+    env VARCHAR(255) NOT NULL,
+    week_start DATE NOT NULL,
+    session_count BIGINT NOT NULL,
+    unique_user_count BIGINT NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT datadog_rum_identified_week_unique
+        UNIQUE (service, env, week_start)
+);
+
+-- Holds real customer email addresses and names: the only PII in this database.
+-- Never print or log these values -- this repository is public and its GitHub
+-- Actions run logs are world-readable. Report from
+-- datadog_rum_identified_users_view, which exposes counts.
+CREATE TABLE datadog_rum_identified_users (
+    id SERIAL PRIMARY KEY,
+    service VARCHAR(255) NOT NULL,
+    env VARCHAR(255) NOT NULL,
+    user_id VARCHAR(128) NOT NULL,
+    user_email VARCHAR(320),
+    user_name VARCHAR(255),
+    install_date DATE,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT datadog_rum_identified_users_unique
+        UNIQUE (service, env, user_id)
+);
+
+---
+
+CREATE OR REPLACE VIEW datadog_rum_identified_users_view AS
+WITH first_week AS (
+    SELECT service, env, MIN(week_start) AS week_start
+    FROM datadog_rum_identified
+    GROUP BY service, env
+),
+seeded AS (
+    SELECT u.service,
+           u.env,
+           COALESCE(u.install_date, f.week_start) AS week_start,
+           u.user_email
+    FROM datadog_rum_identified_users u
+    JOIN first_week f
+      ON f.service = u.service AND f.env = u.env
+)
+SELECT service,
+       env,
+       week_start,
+       COUNT(*) AS new_users,
+       COUNT(*) FILTER (
+           WHERE user_email IS NULL OR user_email NOT LIKE '%@diagrid.io'
+       ) AS new_external_users,
+       SUM(COUNT(*)) OVER (
+           PARTITION BY service, env ORDER BY week_start
+       ) AS total_users,
+       SUM(COUNT(*) FILTER (
+           WHERE user_email IS NULL OR user_email NOT LIKE '%@diagrid.io'
+       )) OVER (
+           PARTITION BY service, env ORDER BY week_start
+       ) AS total_external_users
+FROM seeded
+GROUP BY service, env, week_start;
+
 ---
 
 CREATE OR REPLACE VIEW nuget_dapr_client_view AS
