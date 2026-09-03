@@ -1,0 +1,300 @@
+-- Add datadog_rum_identified_user_orgs, the user-to-organisation link table, and
+-- repoint datadog_rum_identified_users_view's organisation columns at it.
+--
+-- WHY: @usr.organization is a per-SESSION attribute and a Conductor user can
+-- belong to several organisations, so the relationship is many-to-many. The
+-- registry stored one row per user with a single user_organization column, and
+-- DeriveEntries collapsed each user onto their newest organisation. Measured on
+-- 2026-09-02: count(distinct user_organization) returned 17 where DataDog had 24
+-- over the same three collected weeks. One production account has been seen
+-- under 8 organisations and four more under 2.
+--
+-- Design: docs/superpowers/specs/2026-09-02-datadog-user-org-many-to-many-design.md
+-- Plan:   docs/superpowers/plans/2026-09-02-datadog-user-org-many-to-many.md
+--
+-- Neon's HTTP endpoint takes ONE STATEMENT PER REQUEST, so there is no
+-- multi-statement transaction here. Send statement 1, then statement 2. The
+-- CREATE TABLE is additive and cannot affect existing data; if the view
+-- replacement fails, the old view stays and the new table is simply unread.
+--
+-- Both statements were dry-run against the live schema on 2026-09-03 inside an
+-- aborting DO block and returned P0001 "DRY RUN OK" with nothing persisted and
+-- the view still reporting 12 columns (no 42P16).
+--
+-- DDL APPLIED 2026-09-03 by the maintainer. Verified: table created with all 7
+-- columns (organization NOT NULL, first_seen_week nullable), constraint
+-- datadog_rum_identified_user_orgs_unique = UNIQUE (service, env, user_id,
+-- organization) present, and pg_get_viewdef confirms the view now reads the link
+-- table. No regression: datadog_rum_identified still 6 rows, view still 12
+-- columns, registry still 57 rows, session_count and all user columns unchanged
+-- (24/39/54 on conductor.r1, 3 on dapr-ops-dashboard).
+--
+-- COLLECTOR RUN 2026-09-03 08:23:56 UTC. MIGRATION COMPLETE AND VERIFIED.
+--
+--   datadog_rum_identified_user_orgs, service = 'conductor-ui':
+--     conductor.r1.diagrid.io          60 rows, 23 orgs, 50 users, 36 dated / 24 null
+--     dapr-ops-dashboard.diagrid.io     4 rows,  3 orgs,  3 users,  0 dated /  4 null
+--     across envs                      64 rows, 24 orgs, 61 distinct (user, org) pairs
+--
+--   Every figure matches the target derived from DataDog before the change.
+--   Reconciled against the live RUM API on 2026-09-03: grouping on
+--   @usr.organization alone over 2026-08-10..2026-08-31 returns 24 buckets, and
+--   the table holds 24. THE DEFECT IS FIXED: 24 where the old collapsed column
+--   gave 17.
+--
+--   The defect's own signature is reproduced exactly. Organisations per user in
+--   the table: one user with 8, four with 2, forty-five with 1 -- identical to
+--   what DataDog reports. The 8-organisation account that the single
+--   user_organization column could only ever hold one of is now fully
+--   represented.
+--
+--   View: total_orgs now 23 on conductor.r1 (new_orgs 11/7/5 by week, was
+--   10/4/3 summing to 17) and 3 on dapr-ops-dashboard (was 2).
+--   No regression: datadog_rum_identified still 6 rows, view still 12 columns,
+--   registry still 57 rows, total_users unchanged at 54 and 3, session_count
+--   unchanged. datadog_rum_identified_users.user_organization deliberately still
+--   returns 17 -- the column was retained and is now documented as never to be
+--   counted.
+--
+--   NOTE the null first_seen_week counts are correct, not missing data: 24 on
+--   conductor.r1 and all 4 on dapr-ops-dashboard were first seen in the oldest
+--   week the run collected, so their true first week is outside RUM's 30-day
+--   retention and is unknowable. Same convention as install_date, and the same
+--   reason every dapr-ops-dashboard row is null -- that host's traffic begins
+--   inside the lookback.
+--
+-- ORDER OF OPERATIONS -- do these in this order:
+--   0. Run the collector with skipStorage:true FIRST. It needs no table, and it
+--      is the only chance to exercise StoreOrgAsync's statement before it
+--      writes. Expect, for the 2026-08-10..2026-08-31 lookback:
+--        conductor-ui@conductor.r1.diagrid.io:       60 pairs over 23 distinct organisations
+--        conductor-ui@dapr-ops-dashboard.diagrid.io:  4 pairs over 3 distinct organisations
+--      and NO 'WARNING: "orgs" request ... at the group-by limit' line.
+--      If the lookback has moved past 2026-08-31, re-derive these from DataDog
+--      by grouping [@usr.id, @usr.organization] per env over the three complete
+--      weeks the run actually covered.
+--   1. Statement 1 below (CREATE TABLE).
+--   2. Statement 2 below (CREATE OR REPLACE VIEW) -- copy it verbatim from
+--      postgres/postgres_schema.psql, which is the source of truth. It is
+--      reproduced here for convenience only.
+--   3. Run the collector with skipStorage:false immediately. Between step 2 and
+--      this, new_orgs/total_orgs read 0, because the table starts empty.
+--   4. Verification queries at the foot of this file.
+--
+-- NO BACKFILL from user_organization. Its 53 non-null values carry no
+-- trustworthy first-seen week, and `on conflict do nothing` would then stop a
+-- real run from ever correcting a guessed one.
+--
+-- PRE-MIGRATION BASELINE, captured 2026-09-03:
+--   datadog_rum_identified_user_orgs               does not exist
+--   datadog_rum_identified                         6 rows        <- must still be 6
+--   datadog_rum_identified_users (conductor-ui)    57 rows, 53 with an org,
+--                                                  17 distinct orgs, 30 with install_date
+--   datadog_rum_identified_users_view              12 columns    <- must still be 12
+--   view total_orgs                                17 on conductor.r1, 2 on dapr-ops-dashboard
+--   view total_users                               54 on conductor.r1, 3 on dapr-ops-dashboard  <- must NOT change
+
+-- ---------------------------------------------------------------------------
+-- STATEMENT 1
+-- ---------------------------------------------------------------------------
+
+-- One row per (user, organisation) pair ever observed. @usr.organization is a
+-- per-SESSION attribute and a Conductor user can belong to several
+-- organisations, so this relationship is many-to-many: as of 2026-09-02 one
+-- account has been seen under 8 organisations and four more under 2. Count
+-- organisations HERE, never with count(distinct user_organization) on
+-- datadog_rum_identified_users -- that column keeps only one of them and
+-- undercounted 17 against a true 24 when this table was added.
+--
+-- Holds a user id joined to an organisation identifier: PII, like
+-- datadog_rum_identified_users. Never print or log these values -- this
+-- repository is public and its GitHub Actions run logs are world-readable.
+-- Report from datadog_rum_identified_users_view, which exposes counts.
+--
+-- first_seen_week is the Monday of the ISO week the PAIR was first observed
+-- in, or NULL when that was the oldest week the run collected -- meaning the
+-- pair existed at or before the edge of what was queried and its true first
+-- week is unknowable. Same convention as install_date.
+--
+-- env is part of the key, so a pair active on both deployment hosts is stored
+-- twice: count(*) is a row count, NOT a pair count. count(distinct
+-- organization) is safe across envs; counting pairs needs
+-- count(distinct (user_id, organization)).
+CREATE TABLE datadog_rum_identified_user_orgs (
+    id SERIAL PRIMARY KEY,
+    service VARCHAR(255) NOT NULL,
+    env VARCHAR(255) NOT NULL,
+    user_id VARCHAR(128) NOT NULL,
+    organization VARCHAR(128) NOT NULL,
+    first_seen_week DATE,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT datadog_rum_identified_user_orgs_unique
+        UNIQUE (service, env, user_id, organization)
+);
+
+-- ---------------------------------------------------------------------------
+-- STATEMENT 2 -- verbatim from postgres/postgres_schema.psql
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE VIEW datadog_rum_identified_users_view AS
+WITH first_week AS (
+    SELECT service, env, MIN(week_start) AS week_start
+    FROM datadog_rum_identified
+    GROUP BY service, env
+),
+seeded AS (
+    SELECT u.service,
+           u.env,
+           COALESCE(u.install_date, f.week_start) AS week_start,
+           u.user_email,
+           u.user_organization
+    FROM datadog_rum_identified_users u
+    JOIN first_week f
+      ON f.service = u.service AND f.env = u.env
+),
+-- An organisation is new in the week its FIRST user appeared, not in every
+-- week another of its users shows up. Counting distinct orgs per week would
+-- count the same org again each time it gained a user.
+--
+-- Derived from datadog_rum_identified_user_orgs, not from
+-- datadog_rum_identified_users.user_organization: that column keeps only one
+-- of a user's organisations, which undercounted total_orgs 17 against a true
+-- 24. The COALESCE seeds an unknown first week from the earliest week on
+-- record, exactly as `seeded` does for install_date, so both halves of this
+-- view treat unknown history the same way.
+--
+-- CAVEAT -- new_orgs/total_orgs are NOT stable across runs. The COALESCE runs
+-- BEFORE the MIN, and f.week_start is the earliest week ever collected for that
+-- (service, env), which never advances; first_seen_week is NULL for any pair
+-- first seen in the CURRENT run's boundary week, which advances every Monday.
+-- So an organisation first observed months from now, in that run's boundary
+-- week, is reported as new in the earliest collected week instead -- and an
+-- organisation with one known week plus a later NULL pair is dragged back to
+-- that floor. `seeded` has the identical flaw for new_users today, so this
+-- mirrors existing behaviour rather than adding a new defect. The fix is
+-- COALESCE(MIN(o.first_seen_week), MIN(f.week_start)), which keeps an
+-- organisation on its earliest KNOWN week; it is deliberately out of scope
+-- here and belongs with the install_date rework.
+org_first_week AS (
+    SELECT o.service,
+           o.env,
+           o.organization,
+           MIN(COALESCE(o.first_seen_week, f.week_start)) AS week_start
+    FROM datadog_rum_identified_user_orgs o
+    JOIN first_week f
+      ON f.service = o.service AND f.env = o.env
+    GROUP BY o.service, o.env, o.organization
+),
+-- The row spine. Every COLLECTED week appears, not just the weeks in which
+-- some user was first seen -- otherwise a week with real sessions but no new
+-- users produces no row at all, and its session_count has nowhere to land.
+-- dapr-ops-dashboard had exactly that: three collected weeks, one view row.
+-- Keying on collected weeks alone would be simpler, but a user whose
+-- install_date week somehow had no aggregate row (an aggregate write failing
+-- while the registry write succeeded) would then vanish from the view and
+-- undercount total_users. The union cannot lose a user; session_count simply
+-- comes back NULL for such a week.
+week_spine AS (
+    SELECT service, env, week_start FROM datadog_rum_identified
+    UNION
+    SELECT service, env, week_start FROM seeded
+    UNION
+    -- Third arm for the same reason as the second: the spine must not be able
+    -- to lose a row. A user can gain an organisation in a week they were not
+    -- themselves first seen in, and if that week had no aggregate row the LEFT
+    -- JOIN below would drop the organisation and undercount total_orgs.
+    SELECT service, env, week_start FROM org_first_week
+),
+user_weeks AS (
+    SELECT service,
+           env,
+           week_start,
+           COUNT(*) AS new_users,
+           COUNT(*) FILTER (
+               WHERE user_email IS NULL OR user_email NOT ILIKE '%@diagrid.io'
+           ) AS new_external_users
+    FROM seeded
+    GROUP BY service, env, week_start
+),
+org_weeks AS (
+    SELECT service, env, week_start, COUNT(*) AS new_orgs
+    FROM org_first_week
+    GROUP BY service, env, week_start
+)
+-- Column ORDER matters here: CREATE OR REPLACE VIEW can only append columns,
+-- never insert or rename one, so anything added must go at the end however
+-- much better it would read elsewhere. Reordering this list makes the next
+-- deployment fail with 42P16.
+--
+-- Mind the provenance mix in these columns. new_*/total_* are derived from the
+-- registry and are exact counts of registered users and organisations, with
+-- the external variants excluding @diagrid.io. session_count,
+-- unique_user_count and org_count are copied from datadog_rum_identified and
+-- come from DataDog `cardinality` aggregations over ALL authenticated
+-- accounts, internal included, with no external variant available. Charting
+-- unique_user_count against total_external_users compares two different
+-- populations measured two different ways.
+SELECT s.service,
+       s.env,
+       s.week_start,
+       COALESCE(u.new_users, 0) AS new_users,
+       COALESCE(u.new_external_users, 0) AS new_external_users,
+       SUM(COALESCE(u.new_users, 0)) OVER w AS total_users,
+       SUM(COALESCE(u.new_external_users, 0)) OVER w AS total_external_users,
+       COALESCE(o.new_orgs, 0) AS new_orgs,
+       SUM(COALESCE(o.new_orgs, 0)) OVER w AS total_orgs,
+       a.session_count,
+       a.unique_user_count,
+       a.org_count
+FROM week_spine s
+LEFT JOIN user_weeks u
+  ON u.service = s.service AND u.env = s.env AND u.week_start = s.week_start
+LEFT JOIN org_weeks o
+  ON o.service = s.service AND o.env = s.env AND o.week_start = s.week_start
+LEFT JOIN datadog_rum_identified a
+  ON a.service = s.service AND a.env = s.env AND a.week_start = s.week_start
+WINDOW w AS (PARTITION BY s.service, s.env ORDER BY s.week_start);
+
+-- ---------------------------------------------------------------------------
+-- VERIFICATION -- run after the collector's real run
+-- ---------------------------------------------------------------------------
+
+-- 1. The fix. Expect 60 rows / 23 orgs for conductor.r1.diagrid.io and
+--    4 rows / 3 orgs for dapr-ops-dashboard.diagrid.io.
+--    NOTE: count(*) is a ROW count, not a pair count -- env is part of the key,
+--    so a pair active on both hosts is stored twice (64 rows, 61 distinct pairs).
+-- select env, count(*) rows_stored, count(distinct organization) orgs,
+--        count(distinct user_id) users, count(first_seen_week) has_first_seen
+-- from datadog_rum_identified_user_orgs
+-- where service = 'conductor-ui'
+-- group by env order by env;
+
+-- 2. The acceptance criterion. Expect 24, against the 17 the consumer measured.
+--    It is NOT 29: the five days 2026-08-04..2026-08-09 fall outside a
+--    three-complete-week lookback and no single run can reach them. The figure
+--    grows past 24 as runs accumulate.
+-- select count(distinct organization) from datadog_rum_identified_user_orgs
+-- where service = 'conductor-ui';
+
+-- 3. Nothing regressed. Expect 6 and 12.
+-- select (select count(*) from datadog_rum_identified) as agg_rows,
+--        (select count(*) from information_schema.columns
+--         where table_name = 'datadog_rum_identified_users_view') as view_cols;
+
+-- 4. The view. total_orgs must RISE (to 23 on conductor.r1, 3 on
+--    dapr-ops-dashboard); new_users/total_users must NOT move (54 / 3).
+--    No single view row will ever read 24 -- total_orgs is windowed per
+--    (service, env), so the cross-host figure exists only as query 2. Summing
+--    the two hosts gives 26 and double-counts.
+-- select service, env, week_start, new_orgs, total_orgs, new_users, total_users
+-- from datadog_rum_identified_users_view
+-- where service = 'conductor-ui' order by env, week_start;
+
+-- KNOWN, DEFERRED: new_orgs/total_orgs week attribution is not stable across
+-- runs. org_first_week does MIN(COALESCE(first_seen_week, floor)), and the
+-- COALESCE runs before the MIN, so an organisation first seen in a future run's
+-- boundary week is reported as new in the earliest collected week instead. The
+-- `seeded` CTE has the same floor-seeding instability for new_users today, so
+-- this is pre-existing rather than new. Remedy, when someone picks it up:
+-- COALESCE(MIN(o.first_seen_week), MIN(f.week_start)). It belongs with the
+-- install_date rework, which was deliberately out of scope here.

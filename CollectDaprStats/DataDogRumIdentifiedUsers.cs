@@ -57,6 +57,15 @@ namespace DaprStats
             DateOnly? InstallDate);
 
         /// <summary>
+        /// One row of the user-organisation link table. A user can hold
+        /// several of these: <c>@usr.organization</c> is a per-SESSION
+        /// attribute and a Conductor user can belong to more than one
+        /// organisation, so the relationship is many-to-many.
+        /// </summary>
+        public sealed record OrgLink(
+            string UserId, string Organization, DateOnly? FirstSeenWeek);
+
+        /// <summary>
         /// The users in one week's grouped aggregate response. Buckets with no
         /// id are skipped: there is nothing to register.
         /// </summary>
@@ -162,6 +171,65 @@ namespace DaprStats
                     attributes[kv.Key].Email,
                     attributes[kv.Key].Name,
                     attributes[kv.Key].Organization,
+                    kv.Value == boundary ? null : kv.Value))
+                .ToList();
+        }
+
+        /// <summary>
+        /// One entry per distinct (user, organisation) pair, with the start of
+        /// the earliest ISO week the pair was observed in.
+        /// </summary>
+        /// <param name="weeksOldestFirst">
+        /// Must be ordered oldest week first. Weeks with no pairs are allowed.
+        /// </param>
+        /// <remarks>
+        /// The sibling of <see cref="DeriveEntries"/>, and deliberately not
+        /// folded into it: that method answers "who is this user" and must keep
+        /// yielding exactly one row per id, while this one answers "which
+        /// organisations has this user been seen under" and yields as many rows
+        /// as there are organisations. Collapsing the second question into the
+        /// first is the defect this method exists to fix -- it undercounted
+        /// organisations 17 against a true 24.
+        /// <para>
+        /// A pair first seen in the oldest week that produced any pairs gets a
+        /// null first-seen week: that week is the edge of what was queried, so
+        /// the pair probably existed before it and its true first week is
+        /// unknowable. Same convention as install_date.
+        /// </para>
+        /// </remarks>
+        public static IReadOnlyList<OrgLink> DeriveOrgLinks(
+            IReadOnlyList<(DateOnly WeekStart, IReadOnlyList<Observation> Orgs)> weeksOldestFirst)
+        {
+            var firstSeen = new Dictionary<(string UserId, string Organization), DateOnly>();
+            DateOnly? boundary = null;
+
+            foreach (var (weekStart, observations) in weeksOldestFirst)
+            {
+                var pairs = observations
+                    .Where(o => o.Organization is not null)
+                    .Select(o => (o.UserId, Organization: o.Organization!));
+
+                var seenThisWeek = false;
+
+                foreach (var pair in pairs)
+                {
+                    // The boundary is the oldest week that actually produced a
+                    // pair. A week with no observations at all, or one whose
+                    // observations all had a null organisation, is not it.
+                    if (!seenThisWeek)
+                    {
+                        boundary ??= weekStart;
+                        seenThisWeek = true;
+                    }
+
+                    firstSeen.TryAdd(pair, weekStart);
+                }
+            }
+
+            return firstSeen
+                .Select(kv => new OrgLink(
+                    kv.Key.UserId,
+                    kv.Key.Organization,
                     kv.Value == boundary ? null : kv.Value))
                 .ToList();
         }

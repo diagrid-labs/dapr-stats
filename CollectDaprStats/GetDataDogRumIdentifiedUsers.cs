@@ -34,6 +34,21 @@ namespace DaprStats
         private const int AttributeUserGroupByLimit = 500;
         private const int AttributeGroupByLimit = 5;
 
+        // The "orgs" request needs its own pair of limits, because it is the
+        // one request whose second facet is genuinely multi-valued: one
+        // production account has been seen under 8 organisations. Reusing
+        // AttributeGroupByLimit (5) here would truncate that account to 5
+        // under the per-parent reading of DataDog's cap -- a smaller version
+        // of exactly the bug the link table exists to fix.
+        //
+        // 150 * 50 = 7,500, under the 10,000-groups cap and safe under either
+        // reading of how that cap applies. Measured 2026-09-02 over the
+        // three-week lookback: 50 distinct users on the busier host and 8
+        // organisations on the busiest account, so this is ~3x and ~6x
+        // headroom respectively.
+        private const int OrgUserGroupByLimit = 150;
+        private const int OrgGroupByLimit = 50;
+
         private const string AggregateUrl =
             "https://api.datadoghq.com/api/v2/rum/analytics/aggregate";
 
@@ -76,13 +91,16 @@ namespace DaprStats
             var collected =
                 new List<(DateOnly WeekStart,
                           IReadOnlyList<DataDogRumIdentifiedUsers.Observation> Users)>();
+            var collectedOrgs =
+                new List<(DateOnly WeekStart,
+                          IReadOnlyList<DataDogRumIdentifiedUsers.Observation> Orgs)>();
             var allSucceeded = true;
 
             foreach (var week in weeks)
             {
                 try
                 {
-                    var (users, attributesDegraded) =
+                    var (users, orgPairs, attributesDegraded) =
                         await FetchWeekAsync(input, week, apiKey, appKey);
 
                     if (attributesDegraded)
@@ -102,6 +120,7 @@ namespace DaprStats
                     // by itself reveal whether "emails" or "names" was
                     // truncated at its own, smaller limit.
                     collected.Add((week.WeekStart, users));
+                    collectedOrgs.Add((week.WeekStart, orgPairs));
                 }
                 catch (Exception ex)
                 {
@@ -118,6 +137,7 @@ namespace DaprStats
             }
 
             var entries = DataDogRumIdentifiedUsers.DeriveEntries(collected);
+            var orgLinks = DataDogRumIdentifiedUsers.DeriveOrgLinks(collectedOrgs);
 
             var withoutInstallDate = entries.Count(e => e.InstallDate is null);
             var withoutEmail = entries.Count(e => e.Email is null);
@@ -130,11 +150,32 @@ namespace DaprStats
                 $"({withoutInstallDate} with no install date, " +
                 $"{withoutEmail} with no email, {withoutOrg} with no org)");
 
+            var distinctOrgs = orgLinks
+                .Select(l => l.Organization)
+                .Distinct()
+                .Count();
+            var pairsWithoutFirstSeen = orgLinks.Count(l => l.FirstSeenWeek is null);
+
+            // Counts only -- never an id or an organisation identifier. This is
+            // the number to reconcile against DataDog: 60 pairs / 23 orgs for
+            // conductor.r1.diagrid.io and 4 / 3 for
+            // dapr-ops-dashboard.diagrid.io over the three-week lookback as of
+            // 2026-09-02.
+            Console.WriteLine(
+                $"DataDog RUM identified user-orgs {input.Service}@{input.Env}: " +
+                $"{orgLinks.Count} pairs over {distinctOrgs} distinct organisations " +
+                $"({pairsWithoutFirstSeen} with no first-seen week)");
+
             if (!input.SkipStorage)
             {
                 foreach (var entry in entries)
                 {
                     await StoreAsync(input, entry);
+                }
+
+                foreach (var link in orgLinks)
+                {
+                    await StoreOrgAsync(input, link);
                 }
             }
 
@@ -164,6 +205,7 @@ namespace DaprStats
         // there falls back to the ids-only observations (null attributes, which
         // a later run's coalesce can fill in) rather than losing the week.
         private async Task<(IReadOnlyList<DataDogRumIdentifiedUsers.Observation> Users,
+            IReadOnlyList<DataDogRumIdentifiedUsers.Observation> OrgPairs,
             bool AttributesDegraded)> FetchWeekAsync(
                 DataDogRumIdentifiedInput input, IsoWeek.Window week,
                 string apiKey, string appKey)
@@ -190,9 +232,9 @@ namespace DaprStats
                     "names", AttributeUserGroupByLimit, week, apiKey, appKey);
                 orgs = await PostAsync(
                     BuildGroupedBody(input, week,
-                        [(DataDogRumIdentifiedUsers.UserIdFacet, AttributeUserGroupByLimit),
-                         (DataDogRumIdentifiedUsers.OrganizationFacet, AttributeGroupByLimit)]),
-                    "orgs", AttributeUserGroupByLimit, week, apiKey, appKey);
+                        [(DataDogRumIdentifiedUsers.UserIdFacet, OrgUserGroupByLimit),
+                         (DataDogRumIdentifiedUsers.OrganizationFacet, OrgGroupByLimit)]),
+                    "orgs", OrgUserGroupByLimit, week, apiKey, appKey);
             }
             catch (Exception ex)
             {
@@ -204,7 +246,7 @@ namespace DaprStats
                     $"{week.WeekStart:yyyy-MM-dd} ({ids.Count} ids collected): " +
                     ex.Message);
 
-                return (ids, true);
+                return (ids, [], true);
             }
 
             var emailById = FirstNonNullByUserId(emails, u => u.Email);
@@ -219,7 +261,7 @@ namespace DaprStats
                     orgById.TryGetValue(u.UserId, out var org) ? org : null))
                 .ToList();
 
-            return (users, false);
+            return (users, orgs, false);
         }
 
         private static Dictionary<string, string> FirstNonNullByUserId(
@@ -347,6 +389,37 @@ namespace DaprStats
                 entry.Name!,
                 entry.Organization!,
                 entry.InstallDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)!,
+                DateTime.UtcNow
+            };
+
+            await _output.InsertAsync(sqlText, sqlParameters);
+        }
+
+        private async Task StoreOrgAsync(
+            DataDogRumIdentifiedInput input, DataDogRumIdentifiedUsers.OrgLink link)
+        {
+            const string tableName = "datadog_rum_identified_user_orgs";
+
+            // `do nothing`, not `do update`. A later run has a strictly
+            // shorter view of history, so it must never move a recorded first
+            // date -- the same reasoning that keeps install_date out of the
+            // registry's update list. In particular a pair recorded with a null
+            // first_seen_week at the boundary must not be "corrected" by a
+            // later run, whose boundary is later and therefore worse.
+            var sqlText =
+                $"insert into {tableName} " +
+                "(service, env, user_id, organization, first_seen_week, " +
+                " collection_date) " +
+                "values ($1, $2, $3, $4, $5::date, $6) " +
+                "on conflict (service, env, user_id, organization) do nothing";
+
+            var sqlParameters = new object[]
+            {
+                input.Service,
+                input.Env,
+                link.UserId,
+                link.Organization,
+                link.FirstSeenWeek?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)!,
                 DateTime.UtcNow
             };
 

@@ -22,8 +22,8 @@ At the moment the data sources include:
 - Datadog RUM views and users for the `dev-dashboard` service
 - Datadog RUM authenticated sessions, identified users and customer
   organisations for the `conductor-ui` service on `conductor.r1.diagrid.io` and
-  `dapr-ops-dashboard.diagrid.io`, including running totals of unique users and
-  unique organisations
+  `dapr-ops-dashboard.diagrid.io`, including every organisation each user has
+  been seen under and running totals of unique users and unique organisations
 - Download count of the `diagrid-dashboard` container image on GitHub Container Registry
 
 The program is a .NET web service that's using Dapr workflow.

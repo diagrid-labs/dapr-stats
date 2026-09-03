@@ -14,7 +14,7 @@ A .NET 10 web service that uses Dapr Workflow to collect Dapr SDK and community 
 | Test | `dotnet test dapr-stats.sln` |
 | Run locally | `dapr run -f .`, then send a request from [local-tests.http](local-tests.http) |
 
-The test suite is 117 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of the activities or the workflow itself.
+The test suite is 139 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of the activities or the workflow itself.
 
 CI is two workflows: [build.yml](.github/workflows/build.yml) restores, builds and tests on every push and PR to `main`, and [run-workflow.yaml](.github/workflows/run-workflow.yaml) does the weekly collection.
 
@@ -72,6 +72,17 @@ These are all verified in the current code, not guesses:
 - **`@usr.anonymous_id` is not an identity on `conductor-ui`.** It is roughly
   per-session there (1411 sessions produced 1020 ids), unlike on
   `dev-dashboard`. Identified-user counting uses `@usr.id`.
+- **`@usr.organization` is per-session and many-to-many.** A Conductor user can
+  belong to several organisations, and the attribute records the organisation
+  context of the *session*, not of the account: one production account has been
+  seen under 8 organisations and four more under 2. This is why
+  `datadog_rum_identified_user_orgs` exists, and why
+  `datadog_rum_identified_users.user_organization` must never be counted -- it
+  keeps one value per user and returned 17 distinct organisations where DataDog
+  had 24. Watch the group-by limit too: the `orgs` request needs its own
+  `OrgGroupByLimit` (50) rather than the `AttributeGroupByLimit` (5) that
+  `emails` and `names` use, because 5 truncates the 8-organisation account under
+  the per-parent reading of DataDog's 10,000-groups cap.
 - **`nuget_dapr_client` is a misnomer.** That one table holds all nine NuGet packages, distinguished by the `package_name` column.
 - **`PostgresOuput.cs`** is misspelled on disk; the class inside is `PostgresOutput`.
 - **Scarf's owner slug is case-sensitive.** `https://api.scarf.sh/v3/insights/Dapr/...` — the v3 endpoints return `404 Organization not found` for `dapr`. The comment in `GetScarfBuildingBlockViews.cs` says as much.
@@ -85,13 +96,18 @@ These are all verified in the current code, not guesses:
 
 Neon Postgres 16, project `spring-pine-41263944`, database `daprstats`. The schema lives in `postgres/postgres_schema.psql`.
 
-`datadog_rum_identified_users` is the only table here holding PII: real customer
-email addresses, names and organisation identifiers. **This repository is public, so GitHub Actions run
+`datadog_rum_identified_users` and `datadog_rum_identified_user_orgs` are the
+tables here holding PII: real customer email addresses, names and organisation
+identifiers. **This repository is public, so GitHub Actions run
 logs are world-readable — never print or log a `@usr.id`, `@usr.email` or
 `@usr.name` value.** Report from `datadog_rum_identified_users_view`, which
-exposes counts. Deletion for an erasure request is
-`DELETE FROM datadog_rum_identified_users WHERE user_email = $1`, but it only
-sticks once that user falls outside the three-week lookback.
+exposes counts. Deletion for an erasure request is two statements, because the link table keys
+on `user_id` and not on the email:
+`DELETE FROM datadog_rum_identified_user_orgs WHERE (service, env, user_id) IN
+(SELECT service, env, user_id FROM datadog_rum_identified_users WHERE user_email = $1)`
+first, then `DELETE FROM datadog_rum_identified_users WHERE user_email = $1`.
+Doing it the other way round leaves the link rows unreachable. Either way it
+only sticks once that user falls outside the three-week lookback.
 `datadog_rum_identified.unique_user_count` is a DataDog `cardinality` estimate,
 exact at current volume, so a small divergence from
 `datadog_rum_identified_users_view`'s registry-based count is expected at
