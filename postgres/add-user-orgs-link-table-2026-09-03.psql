@@ -29,12 +29,39 @@
 -- columns, registry still 57 rows, session_count and all user columns unchanged
 -- (24/39/54 on conductor.r1, 3 on dapr-ops-dashboard).
 --
--- *** DATA STEP STILL OUTSTANDING as of 2026-09-03. *** The link table is empty
--- (0 rows, no collection_date), so new_orgs/total_orgs currently read 0 on every
--- week, DOWN from 17. This is the documented window between statement 2 and the
--- collector's real run, and it is open now. Nothing is corrupted and no count
--- other than the organisation columns moved. Close it by running step 0 then
--- step 3 above. Delete this paragraph once total_orgs reads 23 / 3.
+-- COLLECTOR RUN 2026-09-03 08:23:56 UTC. MIGRATION COMPLETE AND VERIFIED.
+--
+--   datadog_rum_identified_user_orgs, service = 'conductor-ui':
+--     conductor.r1.diagrid.io          60 rows, 23 orgs, 50 users, 36 dated / 24 null
+--     dapr-ops-dashboard.diagrid.io     4 rows,  3 orgs,  3 users,  0 dated /  4 null
+--     across envs                      64 rows, 24 orgs, 61 distinct (user, org) pairs
+--
+--   Every figure matches the target derived from DataDog before the change.
+--   Reconciled against the live RUM API on 2026-09-03: grouping on
+--   @usr.organization alone over 2026-08-10..2026-08-31 returns 24 buckets, and
+--   the table holds 24. THE DEFECT IS FIXED: 24 where the old collapsed column
+--   gave 17.
+--
+--   The defect's own signature is reproduced exactly. Organisations per user in
+--   the table: one user with 8, four with 2, forty-five with 1 -- identical to
+--   what DataDog reports. The 8-organisation account that the single
+--   user_organization column could only ever hold one of is now fully
+--   represented.
+--
+--   View: total_orgs now 23 on conductor.r1 (new_orgs 11/7/5 by week, was
+--   10/4/3 summing to 17) and 3 on dapr-ops-dashboard (was 2).
+--   No regression: datadog_rum_identified still 6 rows, view still 12 columns,
+--   registry still 57 rows, total_users unchanged at 54 and 3, session_count
+--   unchanged. datadog_rum_identified_users.user_organization deliberately still
+--   returns 17 -- the column was retained and is now documented as never to be
+--   counted.
+--
+--   NOTE the null first_seen_week counts are correct, not missing data: 24 on
+--   conductor.r1 and all 4 on dapr-ops-dashboard were first seen in the oldest
+--   week the run collected, so their true first week is outside RUM's 30-day
+--   retention and is unknowable. Same convention as install_date, and the same
+--   reason every dapr-ops-dashboard row is null -- that host's traffic begins
+--   inside the lookback.
 --
 -- ORDER OF OPERATIONS -- do these in this order:
 --   0. Run the collector with skipStorage:true FIRST. It needs no table, and it
