@@ -386,3 +386,141 @@ public class DataDogRumIdentifiedUsersSearchQueryTests
         Assert.Contains("@usr.id:*", query);
     }
 }
+
+public class DataDogRumIdentifiedUsersDeriveOrgLinksTests
+{
+    private static readonly DateOnly Week1 = new(2026, 8, 10);
+    private static readonly DateOnly Week2 = new(2026, 8, 17);
+    private static readonly DateOnly Week3 = new(2026, 8, 24);
+
+    private static (DateOnly, IReadOnlyList<DataDogRumIdentifiedUsers.Observation>) Week(
+        DateOnly weekStart,
+        params DataDogRumIdentifiedUsers.Observation[] users) => (weekStart, users);
+
+    private static DataDogRumIdentifiedUsers.Observation User(
+        string id, string? org = null) => new(id, null, null, org);
+
+    // The regression test for the defect this change exists to fix. Before it,
+    // DeriveEntries kept only the newest organisation and every other one was
+    // silently discarded -- one production account emits 8.
+    [Fact]
+    public void DeriveOrgLinks_UserWithSeveralOrganizations_YieldsOnePairEach()
+    {
+        var links = DataDogRumIdentifiedUsers.DeriveOrgLinks(
+        [
+            Week(Week1, User("boundary", "org-b")),
+            Week(Week2, User("u1", "org-1"), User("u1", "org-2")),
+            Week(Week3, User("u1", "org-3")),
+        ]);
+
+        Assert.Equal(
+            new[] { "org-1", "org-2", "org-3" },
+            links.Where(l => l.UserId == "u1")
+                 .Select(l => l.Organization)
+                 .OrderBy(o => o)
+                 .ToArray());
+    }
+
+    [Fact]
+    public void DeriveOrgLinks_TwoUsersSharingAnOrganization_YieldsTwoPairs()
+    {
+        var links = DataDogRumIdentifiedUsers.DeriveOrgLinks(
+        [
+            Week(Week1, User("boundary", "org-b")),
+            Week(Week2, User("u1", "org-1"), User("u2", "org-1")),
+        ]);
+
+        Assert.Equal(2, links.Count(l => l.Organization == "org-1"));
+    }
+
+    [Fact]
+    public void DeriveOrgLinks_PairInOldestWeekWithData_GetsNullFirstSeenWeek()
+    {
+        // The oldest week that produced pairs is the edge of what was queried,
+        // so the pair was probably active before it and its true first week is
+        // unknowable. Same convention as install_date.
+        var links = DataDogRumIdentifiedUsers.DeriveOrgLinks(
+        [
+            Week(Week1, User("u1", "org-1")),
+            Week(Week2, User("u1", "org-1")),
+        ]);
+
+        var link = Assert.Single(links);
+        Assert.Null(link.FirstSeenWeek);
+    }
+
+    [Fact]
+    public void DeriveOrgLinks_PairFirstSeenAfterTheBoundary_GetsThatWeek()
+    {
+        var links = DataDogRumIdentifiedUsers.DeriveOrgLinks(
+        [
+            Week(Week1, User("boundary", "org-b")),
+            Week(Week3, User("u1", "org-1")),
+        ]);
+
+        var link = links.Single(l => l.UserId == "u1");
+        Assert.Equal(Week3, link.FirstSeenWeek);
+    }
+
+    [Fact]
+    public void DeriveOrgLinks_PairRepeatedInLaterWeeks_KeepsTheEarliestWeek()
+    {
+        var links = DataDogRumIdentifiedUsers.DeriveOrgLinks(
+        [
+            Week(Week1, User("boundary", "org-b")),
+            Week(Week2, User("u1", "org-1")),
+            Week(Week3, User("u1", "org-1")),
+        ]);
+
+        var link = links.Single(l => l.UserId == "u1");
+        Assert.Equal(Week2, link.FirstSeenWeek);
+    }
+
+    [Fact]
+    public void DeriveOrgLinks_RepeatedPairInOneWeek_YieldsOnePair()
+    {
+        var links = DataDogRumIdentifiedUsers.DeriveOrgLinks(
+        [
+            Week(Week1, User("boundary", "org-b")),
+            Week(Week2, User("u1", "org-1"), User("u1", "org-1")),
+        ]);
+
+        Assert.Equal(1, links.Count(l => l.UserId == "u1"));
+    }
+
+    [Fact]
+    public void DeriveOrgLinks_NullOrganization_YieldsNoPair()
+    {
+        // There is nothing to link. The user is still registered by
+        // DeriveEntries, which works from the "ids" request.
+        var links = DataDogRumIdentifiedUsers.DeriveOrgLinks(
+        [
+            Week(Week1, User("boundary", "org-b")),
+            Week(Week2, User("u1")),
+        ]);
+
+        Assert.DoesNotContain(links, l => l.UserId == "u1");
+    }
+
+    [Fact]
+    public void DeriveOrgLinks_LeadingWeeksWithoutPairsAreNotTheBoundary()
+    {
+        // A week that returned observations but no organisations is not the
+        // boundary, exactly as an empty week is not.
+        var links = DataDogRumIdentifiedUsers.DeriveOrgLinks(
+        [
+            Week(Week1),
+            Week(Week2, User("noorg")),
+            Week(Week3, User("u1", "org-1")),
+        ]);
+
+        var link = Assert.Single(links);
+        Assert.Null(link.FirstSeenWeek);
+    }
+
+    [Fact]
+    public void DeriveOrgLinks_NoWeeks_ReturnsEmpty()
+    {
+        Assert.Empty(DataDogRumIdentifiedUsers.DeriveOrgLinks([]));
+    }
+}

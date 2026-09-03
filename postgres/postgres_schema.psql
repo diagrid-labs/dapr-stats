@@ -159,10 +159,11 @@ CREATE TABLE datadog_rum_users (
 -- org_count and the view's total_orgs count different populations and may
 -- disagree in either direction. org_count is every distinct
 -- @usr.organization seen in that week's sessions. total_orgs counts
--- organisations attached to REGISTERED users, so it omits an org whose users
--- all have a null user_organization, and it collapses a user who changed
--- organisation onto their newest one. A week where org_count exceeds
--- total_orgs is therefore expected, not a bug.
+-- organisations recorded in datadog_rum_identified_user_orgs, which no longer
+-- collapses a multi-organisation user -- so the remaining reasons the two
+-- disagree are that org_count also counts organisations whose sessions carried
+-- an id the registry has not reached yet, and that org_count is a cardinality
+-- estimate. A week where org_count exceeds total_orgs is expected, not a bug.
 -- unique_user_count comes from DataDog's `cardinality` aggregation, which is
 -- an estimate: exact at current volume (~29 users/week), but a small
 -- divergence from datadog_rum_identified_users_view's registry-based count is
@@ -180,10 +181,37 @@ CREATE TABLE datadog_rum_identified (
         UNIQUE (service, env, week_start)
 );
 
--- Holds real customer email addresses and names: the only PII in this database.
--- Never print or log these values -- this repository is public and its GitHub
--- Actions run logs are world-readable. Report from
--- datadog_rum_identified_users_view, which exposes counts.
+-- Holds real customer email addresses and names: PII, along with
+-- datadog_rum_identified_user_orgs. Never print or log these values -- this
+-- repository is public and its GitHub Actions run logs are world-readable.
+-- Report from datadog_rum_identified_users_view, which exposes counts.
+--
+-- user_organization holds ONE of possibly several organisations this user has
+-- been seen under. Across weeks the newest non-null value wins, but WITHIN a
+-- week it is DataDog's first bucket -- the organisation with the most sessions,
+-- not the latest one -- so for a multi-organisation account the stored label is
+-- "the busiest organisation in the newest week that had any". It exists for
+-- labelling a single user, and counting over it UNDERCOUNTS: it returned 17
+-- distinct values where DataDog had 24. Use datadog_rum_identified_user_orgs
+-- to count organisations, or to answer "which organisations does this user
+-- belong to".
+--
+-- A NULL install_date means the user was first observed in the OLDEST week the
+-- run collected, so the account existed at or before the edge of the
+-- three-week lookback and its true first week is outside RUM's 30-day
+-- retention. It is unknowable, not uncaptured -- there is no "not captured"
+-- case, because a user with no observed week is never written at all. This is
+-- why all three dapr-ops-dashboard.diagrid.io rows are null: that host's
+-- traffic begins inside the lookback, so every one of its users was first seen
+-- in the boundary week. datadog_rum_identified_user_orgs.first_seen_week means
+-- the same thing for pairs.
+--
+-- datadog_rum_identified_users_view resolves these nulls to MIN(week_start) of
+-- datadog_rum_identified, which is a FLOOR, not a measurement: the more
+-- history that table holds, the further from the truth the floor sits. Anyone
+-- backfilling earlier weeks into datadog_rum_identified moves every
+-- null-install_date user and null-first_seen_week organisation to the new
+-- earliest week in the view's new_users / new_orgs columns.
 CREATE TABLE datadog_rum_identified_users (
     id SERIAL PRIMARY KEY,
     service VARCHAR(255) NOT NULL,
@@ -196,6 +224,40 @@ CREATE TABLE datadog_rum_identified_users (
     collection_date TIMESTAMP NOT NULL,
     CONSTRAINT datadog_rum_identified_users_unique
         UNIQUE (service, env, user_id)
+);
+
+-- One row per (user, organisation) pair ever observed. @usr.organization is a
+-- per-SESSION attribute and a Conductor user can belong to several
+-- organisations, so this relationship is many-to-many: as of 2026-09-02 one
+-- account has been seen under 8 organisations and four more under 2. Count
+-- organisations HERE, never with count(distinct user_organization) on
+-- datadog_rum_identified_users -- that column keeps only one of them and
+-- undercounted 17 against a true 24 when this table was added.
+--
+-- Holds a user id joined to an organisation identifier: PII, like
+-- datadog_rum_identified_users. Never print or log these values -- this
+-- repository is public and its GitHub Actions run logs are world-readable.
+-- Report from datadog_rum_identified_users_view, which exposes counts.
+--
+-- first_seen_week is the Monday of the ISO week the PAIR was first observed
+-- in, or NULL when that was the oldest week the run collected -- meaning the
+-- pair existed at or before the edge of what was queried and its true first
+-- week is unknowable. Same convention as install_date.
+--
+-- env is part of the key, so a pair active on both deployment hosts is stored
+-- twice: count(*) is a row count, NOT a pair count. count(distinct
+-- organization) is safe across envs; counting pairs needs
+-- count(distinct (user_id, organization)).
+CREATE TABLE datadog_rum_identified_user_orgs (
+    id SERIAL PRIMARY KEY,
+    service VARCHAR(255) NOT NULL,
+    env VARCHAR(255) NOT NULL,
+    user_id VARCHAR(128) NOT NULL,
+    organization VARCHAR(128) NOT NULL,
+    first_seen_week DATE,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT datadog_rum_identified_user_orgs_unique
+        UNIQUE (service, env, user_id, organization)
 );
 
 ---
@@ -216,6 +278,39 @@ seeded AS (
     JOIN first_week f
       ON f.service = u.service AND f.env = u.env
 ),
+-- An organisation is new in the week its FIRST user appeared, not in every
+-- week another of its users shows up. Counting distinct orgs per week would
+-- count the same org again each time it gained a user.
+--
+-- Derived from datadog_rum_identified_user_orgs, not from
+-- datadog_rum_identified_users.user_organization: that column keeps only one
+-- of a user's organisations, which undercounted total_orgs 17 against a true
+-- 24. The COALESCE seeds an unknown first week from the earliest week on
+-- record, exactly as `seeded` does for install_date, so both halves of this
+-- view treat unknown history the same way.
+--
+-- CAVEAT -- new_orgs/total_orgs are NOT stable across runs. The COALESCE runs
+-- BEFORE the MIN, and f.week_start is the earliest week ever collected for that
+-- (service, env), which never advances; first_seen_week is NULL for any pair
+-- first seen in the CURRENT run's boundary week, which advances every Monday.
+-- So an organisation first observed months from now, in that run's boundary
+-- week, is reported as new in the earliest collected week instead -- and an
+-- organisation with one known week plus a later NULL pair is dragged back to
+-- that floor. `seeded` has the identical flaw for new_users today, so this
+-- mirrors existing behaviour rather than adding a new defect. The fix is
+-- COALESCE(MIN(o.first_seen_week), MIN(f.week_start)), which keeps an
+-- organisation on its earliest KNOWN week; it is deliberately out of scope
+-- here and belongs with the install_date rework.
+org_first_week AS (
+    SELECT o.service,
+           o.env,
+           o.organization,
+           MIN(COALESCE(o.first_seen_week, f.week_start)) AS week_start
+    FROM datadog_rum_identified_user_orgs o
+    JOIN first_week f
+      ON f.service = o.service AND f.env = o.env
+    GROUP BY o.service, o.env, o.organization
+),
 -- The row spine. Every COLLECTED week appears, not just the weeks in which
 -- some user was first seen -- otherwise a week with real sessions but no new
 -- users produces no row at all, and its session_count has nowhere to land.
@@ -229,6 +324,12 @@ week_spine AS (
     SELECT service, env, week_start FROM datadog_rum_identified
     UNION
     SELECT service, env, week_start FROM seeded
+    UNION
+    -- Third arm for the same reason as the second: the spine must not be able
+    -- to lose a row. A user can gain an organisation in a week they were not
+    -- themselves first seen in, and if that week had no aggregate row the LEFT
+    -- JOIN below would drop the organisation and undercount total_orgs.
+    SELECT service, env, week_start FROM org_first_week
 ),
 user_weeks AS (
     SELECT service,
@@ -240,15 +341,6 @@ user_weeks AS (
            ) AS new_external_users
     FROM seeded
     GROUP BY service, env, week_start
-),
--- An organisation is new in the week its FIRST user appeared, not in every
--- week another of its users shows up. Counting distinct orgs per week would
--- count the same org again each time it gained a user.
-org_first_week AS (
-    SELECT service, env, user_organization, MIN(week_start) AS week_start
-    FROM seeded
-    WHERE user_organization IS NOT NULL
-    GROUP BY service, env, user_organization
 ),
 org_weeks AS (
     SELECT service, env, week_start, COUNT(*) AS new_orgs
