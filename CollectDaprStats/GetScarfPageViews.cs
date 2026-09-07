@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Dapr.Workflow;
 
 namespace DaprStats
@@ -31,6 +32,22 @@ namespace DaprStats
 
         private static readonly string?[] ColumnCasts =
             ["date", null, null, null, null, null, null, null];
+
+        // company_name and company_domain are VARCHAR(255), which Postgres
+        // measures in characters. A value over this fails the whole insert
+        // chunk with error 22001 after the week's DELETE has already run, and
+        // the same company/domain returns in every subsequent Scarf export,
+        // so the week never self-heals. Checked in characters to match the
+        // column definition.
+        private const int MaxCompanyFieldLength = 255;
+
+        // The unique index over (week_start, site, page_path, company_name,
+        // company_domain) has a btree index-row limit of roughly 2704 bytes,
+        // measured in BYTES, while the VARCHAR limits above are measured in
+        // CHARACTERS. A worst-case UTF-8 key can reach ~3.1KB and exceed the
+        // index limit despite every field passing its own character check.
+        // 2000 leaves comfortable margin under 2704.
+        private const int MaxKeyByteLength = 2000;
 
         private readonly ScarfExportClient _scarf;
         private readonly PostgresOutput _output;
@@ -167,6 +184,11 @@ namespace DaprStats
                     continue;
                 }
 
+                if (!IsStorableKey(row.WeekStart, site, path, row.CompanyName, row.CompanyDomain))
+                {
+                    continue;
+                }
+
                 var key = (row.WeekStart, site, path, row.CompanyName, row.CompanyDomain);
                 totals.TryGetValue(key, out var running);
                 totals[key] = (running.Views + row.Total,
@@ -189,6 +211,52 @@ namespace DaprStats
             }
 
             return byWeek;
+        }
+
+        /// <summary>
+        /// Guards the unique key's storability, in both dimensions Postgres
+        /// enforces: each VARCHAR(255) company column measured in characters,
+        /// and the whole key's UTF-8 byte length against the btree index-row
+        /// limit. Consistent with <see cref="ScarfPage"/>'s
+        /// <c>TryNormalisePath</c>, which already rejects rather than
+        /// truncates an over-long <c>page_path</c> for the same reason.
+        /// </summary>
+        private static bool IsStorableKey(
+            DateOnly week, string site, string path, string companyName, string companyDomain)
+        {
+            if (companyName.Length > MaxCompanyFieldLength ||
+                companyDomain.Length > MaxCompanyFieldLength)
+            {
+                Console.WriteLine(
+                    $"Skipping Scarf Diagrid page row for site '{site}': " +
+                    $"company_name is {companyName.Length} characters and " +
+                    $"company_domain is {companyDomain.Length} characters, " +
+                    $"exceeding the {MaxCompanyFieldLength}-character limit.");
+                return false;
+            }
+
+            var weekText = week.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var keyByteLength =
+                Encoding.UTF8.GetByteCount(weekText) +
+                Encoding.UTF8.GetByteCount(site) +
+                Encoding.UTF8.GetByteCount(path) +
+                Encoding.UTF8.GetByteCount(companyName) +
+                Encoding.UTF8.GetByteCount(companyDomain);
+
+            if (keyByteLength > MaxKeyByteLength)
+            {
+                // Truncated to 40 characters so a long path is not dumped in
+                // full into a world-readable log.
+                var pathPrefix = path.Length > 40 ? path[..40] + "..." : path;
+                Console.WriteLine(
+                    $"Skipping Scarf Diagrid page row for site '{site}': key " +
+                    $"is {keyByteLength} UTF-8 bytes, exceeding the " +
+                    $"{MaxKeyByteLength}-byte budget (page_path prefix " +
+                    $"'{pathPrefix}').");
+                return false;
+            }
+
+            return true;
         }
 
         private async Task StoreAsync(DateOnly weekStart, IReadOnlyList<PageRow> rows)

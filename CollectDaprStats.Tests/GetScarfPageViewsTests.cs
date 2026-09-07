@@ -46,12 +46,49 @@ public class GetScarfPageViewsTests
     [Fact]
     public void Aggregate_DifferentCompaniesOnOnePage_StayDistinct()
     {
+        // Company domains deliberately differ from what Row()'s convention
+        // would produce, and both are asserted explicitly: a mutant that
+        // dropped CompanyDomain from the key tuple, or that swapped
+        // Name/Domain when constructing PageRow, would still pass a bare
+        // count assertion.
         var rows = GetScarfPageViews.Aggregate([
-            Row("https://diagrid.io/pricing", "Acme", 1, 1),
-            Row("https://diagrid.io/pricing", "Globex", 2, 1),
+            new ScarfAggregationResponse.Row(
+                Week, "https://diagrid.io/pricing", "Acme", "acme.com", 1, 1),
+            new ScarfAggregationResponse.Row(
+                Week, "https://diagrid.io/pricing", "Globex", "globex.org", 2, 1),
         ]);
 
         Assert.Equal(2, rows[Week].Count);
+
+        var acme = Assert.Single(rows[Week], r => r.CompanyName == "Acme");
+        Assert.Equal("acme.com", acme.CompanyDomain);
+        Assert.Equal(1, acme.Views);
+
+        var globex = Assert.Single(rows[Week], r => r.CompanyName == "Globex");
+        Assert.Equal("globex.org", globex.CompanyDomain);
+        Assert.Equal(2, globex.Views);
+    }
+
+    [Fact]
+    public void Aggregate_SameCompanyNameDifferentDomain_StayDistinct()
+    {
+        // Pins CompanyDomain into the key tuple specifically: two rows that
+        // share CompanyName but differ only in CompanyDomain must not
+        // collapse into one, which a key tuple missing Domain would allow.
+        var rows = GetScarfPageViews.Aggregate([
+            new ScarfAggregationResponse.Row(
+                Week, "https://diagrid.io/pricing", "Acme", "acme.com", 1, 1),
+            new ScarfAggregationResponse.Row(
+                Week, "https://diagrid.io/pricing", "Acme", "acme.io", 2, 1),
+        ]);
+
+        Assert.Equal(2, rows[Week].Count);
+
+        var dotCom = Assert.Single(rows[Week], r => r.CompanyDomain == "acme.com");
+        Assert.Equal(1, dotCom.Views);
+
+        var dotIo = Assert.Single(rows[Week], r => r.CompanyDomain == "acme.io");
+        Assert.Equal(2, dotIo.Views);
     }
 
     [Fact]
@@ -95,5 +132,60 @@ public class GetScarfPageViewsTests
         Assert.Equal(2, rows.Count);
         Assert.Equal(1, rows[earlier][0].Views);
         Assert.Equal(2, rows[Week][0].Views);
+    }
+
+    [Fact]
+    public void Aggregate_CompanyNameOverLengthLimit_IsDropped()
+    {
+        // 256 characters, one over the company_name VARCHAR(255) column.
+        // Well under the byte budget on its own, so this isolates the
+        // character-length check from the byte-budget check below.
+        var overLongName = new string('a', 256);
+
+        var rows = GetScarfPageViews.Aggregate([
+            Row("https://diagrid.io/pricing", overLongName, 1, 1),
+        ]);
+
+        Assert.Empty(rows);
+    }
+
+    [Fact]
+    public void Aggregate_KeyOverByteBudget_IsDropped()
+    {
+        // company_name and company_domain are each exactly 255 multi-byte
+        // characters ('あ' is 3 UTF-8 bytes), so each passes its own
+        // character-length check individually, but together with the page
+        // path they push the combined UTF-8 key past the 2000-byte budget.
+        var multiByteCompanyField = new string('あ', 255);
+        var multiBytePathSegment = new string('あ', 200);
+        var referer = $"https://diagrid.io/{Uri.EscapeDataString(multiBytePathSegment)}";
+
+        var rows = GetScarfPageViews.Aggregate([
+            new ScarfAggregationResponse.Row(
+                Week, referer, multiByteCompanyField, multiByteCompanyField, 1, 1),
+        ]);
+
+        Assert.Empty(rows);
+    }
+
+    [Fact]
+    public void Aggregate_LargeButLegalKey_IsRetained()
+    {
+        // Both company fields sit exactly at the 255-character limit, but
+        // stay ASCII, so the combined UTF-8 key stays comfortably under the
+        // 2000-byte budget and the row must survive.
+        var companyName = new string('a', 255);
+        var companyDomain = new string('b', 255);
+
+        var rows = GetScarfPageViews.Aggregate([
+            new ScarfAggregationResponse.Row(
+                Week, "https://diagrid.io/pricing", companyName, companyDomain, 3, 2),
+        ]);
+
+        var page = Assert.Single(rows[Week]);
+        Assert.Equal(companyName, page.CompanyName);
+        Assert.Equal(companyDomain, page.CompanyDomain);
+        Assert.Equal(3, page.Views);
+        Assert.Equal(2, page.UniqueVisitors);
     }
 }
