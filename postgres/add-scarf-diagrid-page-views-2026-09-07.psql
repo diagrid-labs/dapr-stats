@@ -1,0 +1,45 @@
+-- Adds weekly Scarf page-view collection for the Diagrid account
+-- (diagrid.io and docs.diagrid.io), one row per week per site per page per
+-- company.
+--
+-- Additive only: no existing table or view is touched. The Dapr Scarf tables
+-- keep their current shape because Diagrid rows land here instead of being
+-- mixed in, which is why no `account` column is added to them.
+
+CREATE TABLE scarf_diagrid_page_views (
+    id SERIAL PRIMARY KEY,
+    week_start DATE NOT NULL,
+    site VARCHAR(255) NOT NULL,
+    page_path VARCHAR(512) NOT NULL,
+    company_name VARCHAR(255) NOT NULL,
+    company_domain VARCHAR(255) NOT NULL DEFAULT '',
+    views BIGINT NOT NULL,
+    unique_visitors BIGINT NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    CONSTRAINT scarf_diagrid_page_views_unique
+        UNIQUE (week_start, site, page_path, company_name, company_domain)
+);
+
+-- The unique constraint's own index leads with week_start but puts site and
+-- page_path ahead of the company columns, so it does not serve the view's
+-- GROUP BY. This table reaches ~1M rows within a year, so the view needs its
+-- own index.
+CREATE INDEX scarf_diagrid_page_views_week_company
+    ON scarf_diagrid_page_views (week_start, company_name, company_domain);
+
+-- total_views is the headline number: how many pages a company viewed that
+-- week across both sites.
+--
+-- unique_visitors is deliberately absent. It is stored per page and summing
+-- distinct counts across pages is never correct — one person reading five
+-- pages would count five times.
+CREATE OR REPLACE VIEW scarf_diagrid_company_pages_view AS
+SELECT
+    week_start,
+    company_name,
+    company_domain,
+    SUM(views)                                                      AS total_views,
+    COALESCE(SUM(views) FILTER (WHERE site = 'diagrid.io'), 0)      AS website_views,
+    COALESCE(SUM(views) FILTER (WHERE site = 'docs.diagrid.io'), 0) AS docs_views
+FROM scarf_diagrid_page_views
+GROUP BY week_start, company_name, company_domain;
