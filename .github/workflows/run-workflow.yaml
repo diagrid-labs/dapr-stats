@@ -2,8 +2,10 @@ name: Run CollectorWorkflow
 
 on:
   schedule:
-    # Run at 10:00 CET (09:00 UTC) every Monday
-    - cron: '0 9 * * 1'
+    # Run at 09:43 CET (08:43 UTC) every Monday. Deliberately off the top of
+    # the hour: GitHub delays or drops scheduled runs under load, and the start
+    # of every hour is the worst slot for it.
+    - cron: '43 8 * * 1'
   workflow_dispatch:
     # NOTE: workflow_dispatch allows at most 10 inputs.
     #

@@ -60,7 +60,7 @@ Collection runs automatically every Monday on a GitHub Actions runner, see [Runn
 
 ## Running via GitHub Actions
 
-The [Run CollectorWorkflow](.github/workflows/run-workflow.yaml) workflow runs on a schedule at 09:00 UTC every Monday. It can also be started manually from the *Actions* tab with *Run workflow*, which offers these inputs:
+The [Run CollectorWorkflow](.github/workflows/run-workflow.yaml) workflow runs on a schedule at 08:43 UTC every Monday. The odd minute is deliberate: GitHub delays or drops scheduled runs under load, and the top of the hour is the most contended slot. It can also be started manually from the *Actions* tab with *Run workflow*, which offers these inputs:
 
 | Input | Type | Default | Effect |
 |---|---|---|---|
