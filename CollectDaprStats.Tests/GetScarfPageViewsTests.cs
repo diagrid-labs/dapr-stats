@@ -188,4 +188,52 @@ public class GetScarfPageViewsTests
         Assert.Equal(3, page.Views);
         Assert.Equal(2, page.UniqueVisitors);
     }
+
+    [Fact]
+    public void MissingSites_BothSitesPresent_ReturnsEmpty()
+    {
+        var byWeek = GetScarfPageViews.Aggregate([
+            Row("https://diagrid.io/pricing", "Acme", 1, 1),
+            Row("https://docs.diagrid.io/catalyst", "Acme", 1, 1),
+        ]);
+
+        Assert.Empty(GetScarfPageViews.MissingSites(byWeek));
+    }
+
+    [Fact]
+    public void MissingSites_OnlyWebsitePresent_ReportsDocsMissing()
+    {
+        var byWeek = GetScarfPageViews.Aggregate([
+            Row("https://diagrid.io/pricing", "Acme", 1, 1),
+        ]);
+
+        var missing = GetScarfPageViews.MissingSites(byWeek);
+
+        Assert.Equal(["docs.diagrid.io"], missing);
+    }
+
+    [Fact]
+    public void MissingSites_OnlyDocsPresent_ReportsWebsiteMissing()
+    {
+        var byWeek = GetScarfPageViews.Aggregate([
+            Row("https://docs.diagrid.io/catalyst", "Acme", 1, 1),
+        ]);
+
+        var missing = GetScarfPageViews.MissingSites(byWeek);
+
+        Assert.Equal(["diagrid.io"], missing);
+    }
+
+    [Fact]
+    public void MissingSites_NeitherSitePresent_ReportsBothMissing()
+    {
+        // An empty dictionary is exactly what Aggregate returns when every
+        // referer is unresolvable, so this doubles as the old all-sites-empty
+        // case the previous guard covered.
+        var byWeek = new Dictionary<DateOnly, List<GetScarfPageViews.PageRow>>();
+
+        var missing = GetScarfPageViews.MissingSites(byWeek);
+
+        Assert.Equal(["diagrid.io", "docs.diagrid.io"], missing);
+    }
 }

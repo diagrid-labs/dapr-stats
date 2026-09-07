@@ -14,7 +14,7 @@ A .NET 10 web service that uses Dapr Workflow to collect Dapr SDK and community 
 | Test | `dotnet test dapr-stats.sln` |
 | Run locally | `dapr run -f .`, then send a request from [local-tests.http](local-tests.http) |
 
-The test suite is 139 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of the activities or the workflow itself.
+The test suite is 186 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of any activity's `RunAsync` or of the workflow itself, but pure helpers extracted from activities — such as `GetScarfPageViews.Aggregate` and `GetScarfPageViews.MissingSites` — are covered.
 
 CI is two workflows: [build.yml](.github/workflows/build.yml) restores, builds and tests on every push and PR to `main`, and [run-workflow.yaml](.github/workflows/run-workflow.yaml) does the weekly collection.
 
@@ -159,7 +159,7 @@ Do not run `git add`, `git commit`, `git push`, or any other state-changing git 
 
 ## Planning docs
 
-Features here are specced before they are built. `docs/superpowers/specs/` holds the design and `docs/superpowers/plans/` the implementation plan, both named `YYYY-MM-DD-<feature>`. The three most recent — package collection retry, Datadog RUM collection, Scarf event collection — are worth reading before touching those areas.
+Features here are specced before they are built. `docs/superpowers/specs/` holds the design and `docs/superpowers/plans/` the implementation plan, both named `YYYY-MM-DD-<feature>`. The three most recent — Scarf Diagrid page collection, the identified-user/organisation many-to-many fix, and Datadog identified-user collection — are worth reading before touching those areas.
 
 ## Known planned work
 

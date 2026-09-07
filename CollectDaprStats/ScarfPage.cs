@@ -19,9 +19,24 @@ namespace DaprStats
         // (VARCHAR(512) in postgres/postgres_schema.psql).
         private const int MaxPathLength = 512;
 
+        // These two host literals also appear, independently, as the string
+        // literals 'diagrid.io' and 'docs.diagrid.io' in
+        // scarf_diagrid_company_pages_view (postgres/postgres_schema.psql and
+        // postgres/add-scarf-diagrid-page-views-2026-09-07.psql). If either
+        // host is ever renamed here, that view's website_views/docs_views
+        // columns silently go to 0 while total_views stays correct — a wrong
+        // answer that looks like a right one. Changing either value needs a
+        // matching view migration.
         private const string WebsiteHost = "diagrid.io";
         private const string WwwWebsiteHost = "www.diagrid.io";
         private const string DocsHost = "docs.diagrid.io";
+
+        /// <summary>
+        /// The two Diagrid sites this activity expects to see at least one row
+        /// for in a healthy run. Single source of truth for
+        /// <see cref="GetScarfPageViews"/>'s per-site zero-row guard.
+        /// </summary>
+        public static readonly string[] Sites = [WebsiteHost, DocsHost];
 
         public static bool TryGetPage(string? referer, out string site, out string path)
         {

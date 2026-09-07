@@ -100,23 +100,36 @@ namespace DaprStats
 
             var byWeek = Aggregate(rows);
 
-            // Zero rows across every week, from here, is indistinguishable
-            // between a genuinely quiet three weeks and two failure modes that
-            // both look healthy: Scarf answering an unrecognised
+            // Zero rows for a site, from here, is indistinguishable between a
+            // genuinely quiet three weeks for that site and two failure modes
+            // that both look healthy: Scarf answering an unrecognised
             // tracking_pixel_id with HTTP 200 and {"data":[]}, or a host
-            // rename that stops ScarfPage matching any referer. Either would
-            // otherwise delete three real weeks of data below and write
-            // nothing back, and the three-week window means the oldest of them
-            // is gone for good before the next run could repair it. Bail out
-            // before the first DELETE rather than risk that.
-            if (byWeek.Values.Sum(list => list.Count) == 0)
+            // rename that stops ScarfPage matching any referer for that site.
+            // This request carries two pixel IDs, one per site, and Scarf
+            // answers each independently — a bad or rotated docs.diagrid.io
+            // pixel does not stop diagrid.io rows from coming back, so a
+            // guard that only checks the combined total stays silent while
+            // one site's rows quietly disappear. Either failure would
+            // otherwise delete three real weeks of that site's data below and
+            // write nothing back, and the three-week window means the oldest
+            // of them is gone for good before the next run could repair it.
+            // Bail out before the first DELETE rather than risk that.
+            //
+            // This is a deliberate fail-closed trade-off: a week in which one
+            // site genuinely has zero attributed views also skips storage for
+            // both sites, which is accepted because at current volume that is
+            // not a realistic scenario, and failing closed here is the same
+            // trade the original all-sites guard made.
+            var missing = MissingSites(byWeek);
+            if (missing.Length > 0)
             {
                 Console.WriteLine(
-                    "WARNING: Scarf Diagrid pages returned zero rows across " +
-                    $"all {WeeksPerRun} weeks. Skipping storage entirely (no " +
-                    "deletes performed). Likely causes: a wrong or revoked " +
-                    "tracking_pixel_id, or a host change that moved the sites " +
-                    "out of ScarfPage's allow-list.");
+                    $"WARNING: Scarf Diagrid pages returned zero rows for " +
+                    $"{string.Join(", ", missing)} across all {WeeksPerRun} " +
+                    "weeks. Skipping storage entirely (no deletes performed). " +
+                    "Likely causes: a wrong or revoked tracking_pixel_id for " +
+                    "that site, or a host change that moved it out of " +
+                    "ScarfPage's allow-list.");
                 return false;
             }
 
@@ -211,6 +224,20 @@ namespace DaprStats
             }
 
             return byWeek;
+        }
+
+        /// <summary>
+        /// The <see cref="ScarfPage.Sites"/> entries with no rows anywhere in
+        /// <paramref name="byWeek"/>. Internal so the zero-row guard's
+        /// predicate can be tested without going through <see cref="RunAsync"/>.
+        /// </summary>
+        internal static string[] MissingSites(Dictionary<DateOnly, List<PageRow>> byWeek)
+        {
+            var sitesSeen = byWeek.Values.SelectMany(rows => rows)
+                                         .Select(row => row.Site)
+                                         .ToHashSet(StringComparer.Ordinal);
+
+            return ScarfPage.Sites.Where(site => !sitesSeen.Contains(site)).ToArray();
         }
 
         /// <summary>

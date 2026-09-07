@@ -3,10 +3,11 @@
     Probes a Scarf API endpoint and prints the status code and response body.
 
 .DESCRIPTION
-    Reads the API token from the SCARF_DAPR_API_TOKEN environment variable and never
-    echoes it. Windows PowerShell 5.1 has no -SkipHttpErrorCheck, so a non-2xx
-    response throws; the catch block recovers the status code and the API's own
-    error body so a 403 or 404 is as readable as a success.
+    Reads the API token from the environment variable named by -TokenVariable
+    (SCARF_DAPR_API_TOKEN by default) and never echoes it. Windows PowerShell
+    5.1 has no -SkipHttpErrorCheck, so a non-2xx response throws; the catch
+    block recovers the status code and the API's own error body so a 403 or
+    404 is as readable as a success.
 
 .PARAMETER Url
     The full Scarf API URL to request.
@@ -19,11 +20,19 @@
     Also write the untruncated response body to this path, so a single download
     can be analysed repeatedly without hitting the API again.
 
+.PARAMETER TokenVariable
+    Name of the environment variable holding the bearer token. Defaults to
+    SCARF_DAPR_API_TOKEN; pass SCARF_DIAGRID_API_TOKEN to probe the Diagrid
+    account instead.
+
 .EXAMPLE
     .\scripts\scarf-probe.ps1 "https://api.scarf.sh/v2/pixels/dapr/overview?per_page=50"
 
 .EXAMPLE
     .\scripts\scarf-probe.ps1 "https://api.scarf.sh/v2/tracking-pixels/dapr/<id>/events" -MaxChars 1500
+
+.EXAMPLE
+    .\scripts\scarf-probe.ps1 "https://api.scarf.sh/v2/pixels/Diagrid/overview?per_page=50" -TokenVariable SCARF_DIAGRID_API_TOKEN
 #>
 [CmdletBinding()]
 param(
@@ -34,16 +43,21 @@ param(
     [int] $MaxChars = 4000,
 
     [Parameter()]
-    [string] $OutFile
+    [string] $OutFile,
+
+    [Parameter()]
+    [string] $TokenVariable = 'SCARF_DAPR_API_TOKEN'
 )
 
 $ErrorActionPreference = 'Stop'
 
-if ([string]::IsNullOrWhiteSpace($env:SCARF_DAPR_API_TOKEN)) {
-    throw 'SCARF_DAPR_API_TOKEN is not set. Set it in this terminal before running the probe.'
+$token = (Get-Item "env:$TokenVariable" -ErrorAction SilentlyContinue).Value
+
+if ([string]::IsNullOrWhiteSpace($token)) {
+    throw "$TokenVariable is not set. Set it in this terminal before running the probe."
 }
 
-$headers = @{ Authorization = "Bearer $env:SCARF_DAPR_API_TOKEN" }
+$headers = @{ Authorization = "Bearer $token" }
 
 try {
     $response = Invoke-WebRequest -Uri $Url -Headers $headers -UseBasicParsing
