@@ -21,6 +21,7 @@ Content-Type: application/json
     "DataDogRumIdentifiedServices" : ["conductor-ui|conductor.r1.diagrid.io", "conductor-ui|dapr-ops-dashboard.diagrid.io"],
     "ScarfBuildingBlockPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
     "ScarfLeaderboardPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
+    "ScarfDiagridPagePixelIds" : ["0a39aa4e-64f2-4851-8a94-2c3417c264ae", "030637aa-5521-4cbd-b1b7-3f9f97865a0e"],
     "SkipStorage": false
 }
 
@@ -44,6 +45,7 @@ Content-Type: application/json
     "DataDogRumIdentifiedServices" : [],
     "ScarfBuildingBlockPixelIds" : [],
     "ScarfLeaderboardPixelIds" : [],
+    "ScarfDiagridPagePixelIds" : [],
     "SkipStorage": false
 }
 
@@ -195,6 +197,7 @@ Content-Type: application/json
     "DataDogRumServices" : [],
     "ScarfBuildingBlockPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
     "ScarfLeaderboardPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
+    "ScarfDiagridPagePixelIds" : ["0a39aa4e-64f2-4851-8a94-2c3417c264ae", "030637aa-5521-4cbd-b1b7-3f9f97865a0e"],
     "SkipStorage": true
 }
 
@@ -217,6 +220,7 @@ Content-Type: application/json
     "DataDogRumServices" : [],
     "ScarfBuildingBlockPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054"],
     "ScarfLeaderboardPixelIds" : ["4848fb3b-3edb-4329-90a9-a9d79afff054", "0f63416a-15c2-4ccd-bae0-001898f75f8f"],
+    "ScarfDiagridPagePixelIds" : ["0a39aa4e-64f2-4851-8a94-2c3417c264ae", "030637aa-5521-4cbd-b1b7-3f9f97865a0e"],
     "SkipStorage": false
 }
 
@@ -230,5 +234,31 @@ Content-Type: application/json
     "operation": "query",
     "metadata": {
         "sql": "select week_start, count(*) from scarf_building_block_views group by week_start order by week_start"
+    }
+}
+
+###
+### Diagrid page row counts per week, for verifying the two runs above.
+###
+POST {{dapr_url}}/v1.0/bindings/daprstats
+Content-Type: application/json
+
+{
+    "operation": "query",
+    "metadata": {
+        "sql": "select week_start, count(*) from scarf_diagrid_page_views group by week_start order by week_start"
+    }
+}
+
+###
+### Top Diagrid companies by total page views, most recent complete week.
+###
+POST {{dapr_url}}/v1.0/bindings/daprstats
+Content-Type: application/json
+
+{
+    "operation": "query",
+    "metadata": {
+        "sql": "select company_name, total_views, website_views, docs_views from scarf_diagrid_company_pages_view where week_start = (select max(week_start) from scarf_diagrid_page_views) order by total_views desc limit 25"
     }
 }

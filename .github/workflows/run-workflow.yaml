@@ -75,6 +75,7 @@ env:
   DATADOGAPIKEY: ${{ secrets.DATADOGAPIKEY }}
   DATADOGAPPKEY: ${{ secrets.DATADOGAPPKEY }}
   SCARF_DAPR_API_TOKEN: ${{ secrets.SCARF_DAPR_API_TOKEN }}
+  SCARF_DIAGRID_API_TOKEN: ${{ secrets.SCARF_DIAGRID_API_TOKEN }}
 
   # The one place the package lists are defined. Used by scheduled runs and by
   # a manual run that leaves a package input set to `all`.
@@ -89,6 +90,7 @@ env:
   FIXED_DATADOG_IDENTIFIED_SERVICES: 'conductor-ui|conductor.r1.diagrid.io,conductor-ui|dapr-ops-dashboard.diagrid.io'
   FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS: '4848fb3b-3edb-4329-90a9-a9d79afff054'
   FIXED_SCARF_LEADERBOARD_PIXEL_IDS: '4848fb3b-3edb-4329-90a9-a9d79afff054,0f63416a-15c2-4ccd-bae0-001898f75f8f'
+  FIXED_SCARF_DIAGRID_PAGE_PIXEL_IDS: '0a39aa4e-64f2-4851-8a94-2c3417c264ae,030637aa-5521-4cbd-b1b7-3f9f97865a0e'
 
 jobs:
   run-workflow:
@@ -202,6 +204,7 @@ jobs:
           DATADOG_ID_CSV=""
           SCARF_BB_CSV=""
           SCARF_LB_CSV=""
+          SCARF_DIAGRID_CSV=""
           if [ "$COLLECT_DOCKERHUB" = "true" ]; then
             DOCKERHUB_CSV="$FIXED_DOCKERHUB_IMAGES"
           fi
@@ -212,6 +215,7 @@ jobs:
           if [ "$COLLECT_SCARF" = "true" ]; then
             SCARF_BB_CSV="$FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS"
             SCARF_LB_CSV="$FIXED_SCARF_LEADERBOARD_PIXEL_IDS"
+            SCARF_DIAGRID_CSV="$FIXED_SCARF_DIAGRID_PAGE_PIXEL_IDS"
           fi
 
           # Generate random UUID for workflow_id
@@ -232,6 +236,7 @@ jobs:
             --argjson dataDogIdentified "$(csv_to_json "$DATADOG_ID_CSV")" \
             --argjson scarfBuildingBlock "$(csv_to_json "$SCARF_BB_CSV")" \
             --argjson scarfLeaderboard "$(csv_to_json "$SCARF_LB_CSV")" \
+            --argjson scarfDiagridPage "$(csv_to_json "$SCARF_DIAGRID_CSV")" \
             --argjson discord "$COLLECT_DISCORD" \
             --argjson github "$COLLECT_GITHUB" \
             --argjson diagrid "$COLLECT_DIAGRID" \
@@ -249,6 +254,7 @@ jobs:
               DataDogRumIdentifiedServices: $dataDogIdentified,
               ScarfBuildingBlockPixelIds: $scarfBuildingBlock,
               ScarfLeaderboardPixelIds: $scarfLeaderboard,
+              ScarfDiagridPagePixelIds: $scarfDiagridPage,
               SkipStorage: $skipStorage
             }')
 

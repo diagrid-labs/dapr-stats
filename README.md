@@ -19,6 +19,8 @@ At the moment the data sources include:
 - Scarf pixel data for `dapr.io` and `docs.dapr.io`:
   - Weekly views of each Dapr building block documentation page, per company
   - Weekly company visit counts across both sites
+- Scarf pixel data for `diagrid.io` and `docs.diagrid.io`:
+  - Weekly views of each page, per company
 - Datadog RUM views and users for the `dev-dashboard` service
 - Datadog RUM authenticated sessions, identified users and customer
   organisations for the `conductor-ui` service on `conductor.r1.diagrid.io` and
@@ -39,6 +41,7 @@ The application requires the following secrets to be set as environment variable
 - `export DATADOGAPIKEY=<DATADOG_API_KEY_VALUE>`
 - `export DATADOGAPPKEY=<DATADOG_APP_KEY_VALUE>`
 - `export SCARF_DAPR_API_TOKEN=<SCARF_API_TOKEN_VALUE>`
+- `export SCARF_DIAGRID_API_TOKEN=<SCARF_API_TOKEN_VALUE>`
 
 ## Running the CollectDaprStats program
 
@@ -69,7 +72,7 @@ The [Run CollectorWorkflow](.github/workflows/run-workflow.yaml) workflow runs o
 | `python_packages` | `all` / `none` / list | `all` | PyPI downloads: the four standard packages, nothing, or the names you give |
 | `collect_dockerhub` | checkbox | on | Docker Hub pulls for the `daprio/*` images |
 | `collect_datadog` | checkbox | on | Datadog RUM views and users, plus `conductor-ui` authenticated sessions and identified users |
-| `collect_scarf` | checkbox | on | Scarf building block page views and company visits |
+| `collect_scarf` | checkbox | on | Scarf building block page views and company visits (Dapr), and page views per company (Diagrid) |
 | `collect_discord` | checkbox | on | Discord data |
 | `collect_github` | checkbox | on | GitHub data for the dapr org |
 | `collect_diagrid_dashboard` | checkbox | on | Diagrid dashboard data |

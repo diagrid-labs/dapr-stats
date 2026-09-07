@@ -85,7 +85,18 @@ These are all verified in the current code, not guesses:
   the per-parent reading of DataDog's 10,000-groups cap.
 - **`nuget_dapr_client` is a misnomer.** That one table holds all nine NuGet packages, distinguished by the `package_name` column.
 - **`PostgresOuput.cs`** is misspelled on disk; the class inside is `PostgresOutput`.
-- **Scarf's owner slug is case-sensitive.** `https://api.scarf.sh/v3/insights/Dapr/...` — the v3 endpoints return `404 Organization not found` for `dapr`. The comment in `GetScarfBuildingBlockViews.cs` says as much.
+- **Scarf's owner slug is case-sensitive, and there are now two accounts.**
+  `Dapr` and `Diagrid`; the v3 endpoints return `404 Organization not found` for
+  a lowercased slug. The slug and the token secret name are no longer consts on
+  a shared URL — each activity declares its own `Owner` and `ApiTokenSecret` and
+  passes them to `ScarfExportClient`. Diagrid page rows live in
+  `scarf_diagrid_page_views`, separate from the two Dapr tables, so neither
+  table needs an `account` column yet.
+- **`ScarfExportRequest.GroupByArtifact` is `bool?` on purpose.** Omitting
+  `group_by_artifact` and sending `group_by_artifact=true` are different
+  requests. `GetScarfCompanyViews` sends `false` to merge its two pixels;
+  `GetScarfBuildingBlockViews` and `GetScarfPageViews` omit it. Do not collapse
+  it to a plain `bool`.
 - **Scarf writes are delete-then-insert per ISO week**, which is what makes re-running a week idempotent. Any change to that write path needs the same guarantee.
 - **A full run is slow by design.** The package loops retry up to three times with a five-minute backoff between attempts, so collection can take ~25 minutes. The CI job polls with a 25-minute deadline inside a 30-minute job timeout; anything that lengthens the retry path needs both raised.
 - **`workflow_dispatch` allows at most 10 inputs.** `run-workflow.yaml` is exactly at the cap, which is why the Docker Hub images, Datadog services and Scarf pixel IDs are `FIXED_*` env values behind checkboxes rather than editable fields.
