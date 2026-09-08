@@ -873,10 +873,12 @@ GROUP BY week_start, company_name, company_domain;
 -- had no unique constraint.
 --
 -- NOT YET APPLIED as of 2026-09-08. This records the DDL that
--- postgres/add-collector-week-dedup-2026-09-08.psql will apply; that migration's
--- own final step replaces this paragraph with "Applied <date>" once it has run.
--- Do not write "Applied" here before it is true: this is the file people read to
--- learn the current schema.
+-- postgres/add-collector-week-dedup-2026-09-08.psql will apply. Once that
+-- migration has actually been run, replace this paragraph with
+-- "Applied <date>; see postgres/add-collector-week-dedup-2026-09-08.psql." -
+-- that is a manual edit, not something the .psql file does for you. Do not
+-- write "Applied" before it is true: this is the file people read to learn the
+-- current schema.
 --
 -- collection_week is GENERATED, so the application never writes it and it
 -- cannot drift from collection_date.

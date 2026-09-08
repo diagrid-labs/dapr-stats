@@ -140,8 +140,13 @@ ORDER BY tc.table_name;
 --    If section 2 succeeded in full this cannot fail, because Postgres refuses
 --    ADD CONSTRAINT UNIQUE over existing duplicates. Its value is the partial
 --    case: section 2 is fourteen statements and Neon's HTTP endpoint takes one
---    per request, so a run that stopped half way leaves some tables without a
---    constraint - and those are the ones this query would catch.
+--    per request, so a run can stop half way.
+--
+--    Be precise about what this does and does not catch. A table left
+--    unconstrained because its ADD CONSTRAINT hit a real duplicate shows up
+--    here. A table the run never reached at all has no duplicate to find and is
+--    invisible to this query - that one shows up in section 3's column and
+--    constraint counts. Run both sections, not just this one.
 
 WITH k AS (
   SELECT 'nuget_dapr_client' t, collection_week wk, package_name || '@' || package_version key FROM nuget_dapr_client
