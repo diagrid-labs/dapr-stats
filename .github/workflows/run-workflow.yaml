@@ -42,10 +42,15 @@ on:
         type: boolean
         default: true
       collect_scarf:
-        description: 'Collect Scarf pixel events'
+        description: 'Scarf pixel events: all accounts, neither, or one'
         required: false
-        type: boolean
-        default: true
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - none
+          - dapr
+          - diagrid
       collect_discord:
         description: 'Collect Discord data'
         required: false
@@ -84,7 +89,8 @@ env:
   DEFAULT_PYTHON_PACKAGES: 'dapr,dapr-agents,dapr-ext-workflow,diagrid'
 
   # Not exposed as dispatch inputs (10-input cap); switched on and off by the
-  # collect_dockerhub / collect_datadog / collect_scarf checkboxes.
+  # collect_dockerhub and collect_datadog checkboxes and by the collect_scarf
+  # choice.
   FIXED_DOCKERHUB_IMAGES: 'daprio/daprd,daprio/scheduler,daprio/operator,daprio/injector,daprio/sentry,daprio/placement'
   FIXED_DATADOG_RUM_SERVICES: 'dev-dashboard'
   FIXED_DATADOG_IDENTIFIED_SERVICES: 'conductor-ui|conductor.r1.diagrid.io,conductor-ui|dapr-ops-dashboard.diagrid.io'
@@ -177,6 +183,21 @@ jobs:
             if [ "$1" = "true" ]; then echo true; else echo false; fi
           }
 
+          # Which Scarf accounts to collect. A `choice` input always submits one
+          # of its declared options, so unlike the package text fields it cannot
+          # be silently replaced by its default -- but a scheduled run submits no
+          # inputs at all, so the empty case still has to resolve to `all`.
+          # Anything unrecognised also falls back to `all` rather than silently
+          # collecting nothing.
+          resolve_scarf() {
+            case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+              none)    printf '%s' 'none' ;;
+              dapr)    printf '%s' 'dapr' ;;
+              diagrid) printf '%s' 'diagrid' ;;
+              *)       printf '%s' 'all' ;;
+            esac
+          }
+
           # Trims each entry and drops blanks, so an empty list yields [].
           csv_to_json() {
             jq -nc --arg csv "$1" '$csv
@@ -191,14 +212,14 @@ jobs:
 
           COLLECT_DOCKERHUB=$(norm_bool "$(pick "$IN_COLLECT_DOCKERHUB" true)")
           COLLECT_DATADOG=$(norm_bool "$(pick "$IN_COLLECT_DATADOG" true)")
-          COLLECT_SCARF=$(norm_bool "$(pick "$IN_COLLECT_SCARF" true)")
+          SCARF_MODE=$(resolve_scarf "$IN_COLLECT_SCARF")
           COLLECT_DISCORD=$(norm_bool "$(pick "$IN_COLLECT_DISCORD" true)")
           COLLECT_GITHUB=$(norm_bool "$(pick "$IN_COLLECT_GITHUB" true)")
           COLLECT_DIAGRID=$(norm_bool "$(pick "$IN_COLLECT_DIAGRID_DASHBOARD" true)")
           SKIP_STORAGE=$(norm_bool "$(pick "$IN_SKIP_STORAGE" false)")
 
           # CollectorWorkflow skips any collector whose list is empty, so the
-          # three toggles are applied by blanking out the fixed lists.
+          # toggles are applied by blanking out the fixed lists.
           DOCKERHUB_CSV=""
           DATADOG_CSV=""
           DATADOG_ID_CSV=""
@@ -212,11 +233,26 @@ jobs:
             DATADOG_CSV="$FIXED_DATADOG_RUM_SERVICES"
             DATADOG_ID_CSV="$FIXED_DATADOG_IDENTIFIED_SERVICES"
           fi
-          if [ "$COLLECT_SCARF" = "true" ]; then
-            SCARF_BB_CSV="$FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS"
-            SCARF_LB_CSV="$FIXED_SCARF_LEADERBOARD_PIXEL_IDS"
-            SCARF_DIAGRID_CSV="$FIXED_SCARF_DIAGRID_PAGE_PIXEL_IDS"
-          fi
+          # Scarf is per-account rather than a single on/off, so that one
+          # account can be re-collected without rewriting the other's three
+          # weeks. `dapr` covers both Dapr pixel lists; `diagrid` covers the
+          # page-view pixels.
+          case "$SCARF_MODE" in
+            all)
+              SCARF_BB_CSV="$FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS"
+              SCARF_LB_CSV="$FIXED_SCARF_LEADERBOARD_PIXEL_IDS"
+              SCARF_DIAGRID_CSV="$FIXED_SCARF_DIAGRID_PAGE_PIXEL_IDS"
+              ;;
+            dapr)
+              SCARF_BB_CSV="$FIXED_SCARF_BUILDINGBLOCK_PIXEL_IDS"
+              SCARF_LB_CSV="$FIXED_SCARF_LEADERBOARD_PIXEL_IDS"
+              ;;
+            diagrid)
+              SCARF_DIAGRID_CSV="$FIXED_SCARF_DIAGRID_PAGE_PIXEL_IDS"
+              ;;
+            none)
+              ;;
+          esac
 
           # Generate random UUID for workflow_id
           WORKFLOW_ID=$(uuidgen)
