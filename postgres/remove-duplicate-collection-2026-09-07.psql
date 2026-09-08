@@ -1,0 +1,303 @@
+-- Remove the duplicate rows written by the first of two CollectorWorkflow runs
+-- on 2026-09-07.
+--
+-- WHAT HAPPENED: the workflow collected twice that Monday.
+--
+--   13:11 UTC  workflow_dispatch (manual)   <- DELETE these rows
+--   14:53 UTC  schedule                     <- KEEP these rows
+--
+-- The cron is '43 8 * * 1', so the scheduled run should have been created at
+-- 08:43. GitHub created it 6h10m late, at 14:53. The manual run at 13:11 was
+-- presumably dispatched because the schedule looked like it had been skipped;
+-- the delayed scheduled run then landed anyway. `gh run list` confirms both
+-- runs, both with conclusion `success`.
+--
+-- This is the second occurrence of this class of bug - see
+-- remove-duplicate-package-collection-2026-09-01.psql - but the remedy there
+-- does NOT transfer unchanged. Read the python_dapr note below before running.
+--
+-- WHICH RUN TO KEEP: the 14:53 scheduled run. Its cumulative counters are
+-- marginally fresher (docker 94,803,522 vs 94,801,713; dashboard 24,618 vs
+-- 24,614) and its rolling 7-day GitHub window ends 1h33m later. Keeping the
+-- scheduled run also keeps the Monday schedule as the series of record.
+--
+-- AFFECTED TABLES. The six tables below are append-only, so both runs are
+-- present. Verified on 2026-09-08 that the two runs cover *identical* entity
+-- sets, so deleting one loses nothing:
+--
+--   table               run1  run2  only in run1  only in run2  key compared
+--   nuget_dapr_client    248   248        0             0       package+version
+--   github_dapr           45    45        0             0       repo_name
+--   npm_dapr_dapr         15    15        0             0       package+version
+--   dockerhub_images       6     6        0             0       namespace/image
+--   discord_dapr           1     1        -             -       single row
+--   diagrid_dashboard      1     1        -             -       single row
+--
+-- The ids are contiguous per table per run, and every run-1 id is lower than
+-- every run-2 id, so a one-hour window separates them exactly:
+--
+--   table               run1 times         run1 ids   run2 times         run2 ids
+--   nuget_dapr_client   13:11:53-13:12:58  6643-6890  14:54:44-14:55:59  6891-7138
+--   github_dapr         13:23:53-13:23:55  2974-3018  14:56:45-14:56:47  3019-3063
+--   npm_dapr_dapr       13:11:53-13:11:55  1185-1199  14:54:44-14:54:47  1200-1214
+--   dockerhub_images    13:23:15           139-144    14:56:05           145-150
+--   discord_dapr        13:23:17           74         14:56:07           75
+--   diagrid_dashboard   13:23:17           24         14:56:08           25
+--
+-- DO NOT TOUCH python_dapr. This is the important difference from the
+-- 2026-09-01 remediation. pypistats rate-limited both runs, so neither run has
+-- all four packages and the two runs are DISJOINT, not duplicated:
+--
+--   13:12:23  diagrid            id 166   \
+--   13:17:44  dapr-agents        id 167    >  run 1 - three packages
+--   13:17:54  dapr-ext-workflow  id 168   /
+--   14:54:44  dapr               id 169   -   run 2 - the fourth
+--
+-- All four rows are needed for the day to be complete. A window delete of the
+-- 13:00-14:00 hour would silently drop three of the four packages. python_dapr
+-- appears in the verification query only, to confirm it still holds 4 rows.
+--
+-- ALSO DO NOT TOUCH the Scarf and DataDog tables. They are written
+-- delete-then-insert per ISO week and are therefore idempotent; the 14:53 run
+-- replaced the 13:11 run's rows in place. Confirmed clean: one collection
+-- timestamp each for scarf_building_block_views (1595 rows),
+-- scarf_company_views (3018), datadog_rum (3) and datadog_rum_identified (6).
+--
+-- Expected to delete: 316 rows total - 248 nuget, 45 github, 15 npm,
+-- 6 dockerhub, 1 discord, 1 diagrid_dashboard. 0 python.
+--
+-- APPLIED 2026-09-08 by the maintainer, run top-to-bottom in the Neon SQL
+-- editor. COMPLETE AND VERIFIED. All 316 rows deleted, whole-table counts
+-- moving by exactly the predicted delta:
+--
+--   table               before  after  delta
+--   nuget_dapr_client     6565   6317   -248
+--   github_dapr           2821   2776    -45
+--   npm_dapr_dapr         1147   1132    -15
+--   dockerhub_images       150    144     -6
+--   discord_dapr            74     73     -1
+--   diagrid_dashboard       25     24     -1
+--   python_dapr            145    145      0   <- correctly untouched
+--
+-- Step 3 returned distinct_run_hours = 1 for all six tables, with only the
+-- 14:5x scheduled run surviving. Every total matched the prediction exactly:
+-- github 33,864 stars (was double-counted at 67,728, and 33,836 the previous
+-- week), nuget 71,618,864 downloads, npm 57,142, docker 94,803,522 pulls,
+-- discord 8,066 members, dashboard 24,618 downloads. python_dapr still holds
+-- its 4 rows spanning 13:12:23-14:54:44, all four packages present.
+--
+-- Scarf and DataDog confirmed untouched: scarf_building_block_views 2136,
+-- scarf_company_views 4060, scarf_diagrid_page_views 2917, datadog_rum 9,
+-- datadog_rum_identified 31 - identical to before.
+--
+-- A sweep of all six tables across their full history now returns no
+-- collection day with more than one run hour. Kept here as a record of the
+-- remediation.
+--
+-- HOW TO RUN: paste the whole file into the Neon SQL editor and run it in one
+-- go. Steps 1, 2 and 3 execute in order - preview, delete, verify - and steps
+-- 2b and 4 are commented out so nothing is done twice. You will get three
+-- result sets back; read them bottom-up, since step 3 is the one that proves
+-- the outcome. Step 1's counts are also in the header above, so you can check
+-- them against expectation after the fact rather than before.
+--
+-- If you would rather see the preview BEFORE anything is deleted, run only
+-- lines up to the end of step 1 first, confirm 248/45/15/6/1/1, then run the
+-- rest.
+
+
+-- 1. Preview. Confirm these counts before deleting anything.
+--    Expected: 248 / 45 / 15 / 6 / 1 / 1.
+
+SELECT 'nuget_dapr_client' AS table_name, count(*) AS rows_to_delete
+FROM nuget_dapr_client
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+UNION ALL
+SELECT 'github_dapr', count(*)
+FROM github_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+UNION ALL
+SELECT 'npm_dapr_dapr', count(*)
+FROM npm_dapr_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+UNION ALL
+SELECT 'dockerhub_images', count(*)
+FROM dockerhub_images
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+UNION ALL
+SELECT 'discord_dapr', count(*)
+FROM discord_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+UNION ALL
+SELECT 'diagrid_dashboard', count(*)
+FROM diagrid_dashboard
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00';
+
+
+-- 2. Delete. This is the form to run in the Neon SQL editor or psql, which can
+--    hold a transaction open. Note python_dapr is absent, deliberately.
+
+BEGIN;
+
+DELETE FROM nuget_dapr_client
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00';
+
+DELETE FROM github_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00';
+
+DELETE FROM npm_dapr_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00';
+
+DELETE FROM dockerhub_images
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00';
+
+DELETE FROM discord_dapr
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00';
+
+DELETE FROM diagrid_dashboard
+WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+  AND collection_date <  TIMESTAMP '2026-09-07 14:00:00';
+
+COMMIT;
+
+
+-- 2b. COMMENTED OUT ON PURPOSE - this is the SAME delete as step 2, expressed
+--     as one atomic statement for clients that cannot hold a transaction open
+--     (Neon's HTTP /sql endpoint takes one statement per request).
+--
+--     It is commented out so the file is safe to run top-to-bottom. If you want
+--     this form instead, uncomment it and comment out step 2. Never run both:
+--     the second one to execute finds nothing and reports all zeros, which
+--     looks like a failure when in fact step 2 already did the work.
+
+-- WITH d_nuget AS (
+--   DELETE FROM nuget_dapr_client
+--   WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--     AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+--   RETURNING 1
+-- ), d_github AS (
+--   DELETE FROM github_dapr
+--   WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--     AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+--   RETURNING 1
+-- ), d_npm AS (
+--   DELETE FROM npm_dapr_dapr
+--   WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--     AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+--   RETURNING 1
+-- ), d_docker AS (
+--   DELETE FROM dockerhub_images
+--   WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--     AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+--   RETURNING 1
+-- ), d_discord AS (
+--   DELETE FROM discord_dapr
+--   WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--     AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+--   RETURNING 1
+-- ), d_dashboard AS (
+--   DELETE FROM diagrid_dashboard
+--   WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--     AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+--   RETURNING 1
+-- )
+-- SELECT (SELECT count(*) FROM d_nuget)     AS nuget_deleted,
+--        (SELECT count(*) FROM d_github)    AS github_deleted,
+--        (SELECT count(*) FROM d_npm)       AS npm_deleted,
+--        (SELECT count(*) FROM d_docker)    AS docker_deleted,
+--        (SELECT count(*) FROM d_discord)   AS discord_deleted,
+--        (SELECT count(*) FROM d_dashboard) AS dashboard_deleted;
+
+
+-- 3. Verify. Every table should report exactly ONE distinct run hour for the
+--    day, and the surviving rows should be the 14:5x scheduled run.
+--
+--    Expected after the delete:
+--
+--      table               rows_kept  first_row  last_row   total
+--      nuget_dapr_client       248     14:54:44  14:55:59   71,618,864 downloads
+--      github_dapr              45     14:56:45  14:56:47   33,864 stars
+--      npm_dapr_dapr            15     14:54:44  14:54:47   57,142 downloads
+--      dockerhub_images          6     14:56:05  14:56:05   94,803,522 pulls
+--      discord_dapr              1     14:56:07  14:56:07   8,066 members
+--      diagrid_dashboard         1     14:56:08  14:56:08   24,618 downloads
+--      python_dapr               4     13:12:23  14:54:44   UNCHANGED, 4 packages
+--
+--    33,864 stars sits just above the 33,836 recorded on 2026-09-01, which is
+--    the sanity check that the double-count (67,728) is gone. For python_dapr
+--    the third column is the distinct package count, not the run-hour count,
+--    and 4 is the value to expect.
+
+SELECT 'nuget_dapr_client' AS table_name, count(*) AS rows_kept,
+       count(DISTINCT date_trunc('hour', collection_date)) AS distinct_run_hours,
+       min(collection_date) AS first_row, max(collection_date) AS last_row,
+       sum(download_count) AS total
+FROM nuget_dapr_client
+WHERE collection_date >= DATE '2026-09-07' AND collection_date < DATE '2026-09-08'
+UNION ALL
+SELECT 'github_dapr', count(*), count(DISTINCT date_trunc('hour', collection_date)),
+       min(collection_date), max(collection_date), sum(star_count_total)
+FROM github_dapr
+WHERE collection_date >= DATE '2026-09-07' AND collection_date < DATE '2026-09-08'
+UNION ALL
+SELECT 'npm_dapr_dapr', count(*), count(DISTINCT date_trunc('hour', collection_date)),
+       min(collection_date), max(collection_date), sum(download_count)
+FROM npm_dapr_dapr
+WHERE collection_date >= DATE '2026-09-07' AND collection_date < DATE '2026-09-08'
+UNION ALL
+SELECT 'dockerhub_images', count(*), count(DISTINCT date_trunc('hour', collection_date)),
+       min(collection_date), max(collection_date), sum(pull_count)
+FROM dockerhub_images
+WHERE collection_date >= DATE '2026-09-07' AND collection_date < DATE '2026-09-08'
+UNION ALL
+SELECT 'discord_dapr', count(*), count(DISTINCT date_trunc('hour', collection_date)),
+       min(collection_date), max(collection_date), sum(member_count)
+FROM discord_dapr
+WHERE collection_date >= DATE '2026-09-07' AND collection_date < DATE '2026-09-08'
+UNION ALL
+SELECT 'diagrid_dashboard', count(*), count(DISTINCT date_trunc('hour', collection_date)),
+       min(collection_date), max(collection_date), sum(download_count)
+FROM diagrid_dashboard
+WHERE collection_date >= DATE '2026-09-07' AND collection_date < DATE '2026-09-08'
+UNION ALL
+SELECT 'python_dapr (untouched)', count(*), count(DISTINCT package_name),
+       min(collection_date), max(collection_date), sum(download_count)
+FROM python_dapr
+WHERE collection_date >= DATE '2026-09-07' AND collection_date < DATE '2026-09-08'
+ORDER BY table_name;
+
+
+-- 4. Optional: export the rows before deleting, as the 2026-09-01 remediation
+--    did. Run this first and keep the output if you want a record. The ids are
+--    contiguous, so the ranges in the header are enough to confirm the window
+--    caught exactly one run's inserts.
+
+-- SELECT 'nuget_dapr_client' AS t, to_jsonb(x) AS row FROM nuget_dapr_client x
+-- WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--   AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+-- UNION ALL SELECT 'github_dapr', to_jsonb(x) FROM github_dapr x
+-- WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--   AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+-- UNION ALL SELECT 'npm_dapr_dapr', to_jsonb(x) FROM npm_dapr_dapr x
+-- WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--   AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+-- UNION ALL SELECT 'dockerhub_images', to_jsonb(x) FROM dockerhub_images x
+-- WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--   AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+-- UNION ALL SELECT 'discord_dapr', to_jsonb(x) FROM discord_dapr x
+-- WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--   AND collection_date <  TIMESTAMP '2026-09-07 14:00:00'
+-- UNION ALL SELECT 'diagrid_dashboard', to_jsonb(x) FROM diagrid_dashboard x
+-- WHERE collection_date >= TIMESTAMP '2026-09-07 13:00:00'
+--   AND collection_date <  TIMESTAMP '2026-09-07 14:00:00';

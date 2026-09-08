@@ -19,6 +19,26 @@ namespace DaprStats
             _logger = loggerFactory.CreateLogger<GetGitHubRepoData>();
         }
 
+        private const string TableName = "github_dapr";
+
+        private static readonly string[] KeyColumns =
+            ["collection_week", "repo_name"];
+
+        // Every column in the INSERT except repo_name, which is the key. A
+        // re-run must refresh all of them: the whole point is that running the
+        // workflow again repairs a partially failed collection.
+        private static readonly string[] UpdateColumns =
+            ["collection_date", "fork_count_total", "star_count_total",
+             "commit_count", "commit_users", "issue_count", "issue_users",
+             "comment_count", "comment_users", "pullrequest_count",
+             "pullrequest_users", "distinct_user_count",
+             "collected_over_number_of_days"];
+
+        internal static readonly string InsertSql =
+            $"insert into {TableName} (repo_name, collection_date, fork_count_total, star_count_total, commit_count, commit_users, issue_count, issue_users, comment_count, comment_users, pullrequest_count, pullrequest_users, distinct_user_count, collected_over_number_of_days) " +
+            "values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) " +
+            UpsertBuilder.BuildOnConflict(KeyColumns, UpdateColumns);
+
         public override async Task<bool> RunAsync(
             WorkflowActivityContext context,
             GitHubDataInput input)
@@ -56,10 +76,8 @@ namespace DaprStats
                     CollectedOverNumberOfDays = CollectionPeriodInDays
                 };
 
-                string tableName = $"github_dapr";
-                var sqlText = $"insert into {tableName} (repo_name, collection_date, fork_count_total, star_count_total, commit_count, commit_users, issue_count, issue_users, comment_count, comment_users, pullrequest_count, pullrequest_users, distinct_user_count, collected_over_number_of_days) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)";
                 var sqlParameters = new object[] { githubData.Repository, githubData.CollectionDate, githubData.ForksTotalCount, githubData.StarsTotalCount, githubData.CommitCount, githubData.CommitUsers, githubData.IssueCount, githubData.IssueUsers, githubData.CommentCount, githubData.CommentUsers, githubData.PullRequestCount, githubData.PullRequestUsers, githubData.DistinctUserCount, githubData.CollectedOverNumberOfDays };
-                await _output.InsertAsync(sqlText, sqlParameters);
+                await _output.InsertAsync(InsertSql, sqlParameters);
             }
 
             }

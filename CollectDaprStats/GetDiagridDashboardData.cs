@@ -15,6 +15,18 @@ namespace DaprStats
             _output = output;
         }
 
+        private const string TableName = "diagrid_dashboard";
+
+        private static readonly string[] KeyColumns = ["collection_week"];
+
+        private static readonly string[] UpdateColumns =
+            ["collection_date", "download_count"];
+
+        internal static readonly string InsertSql =
+            $"insert into {TableName} (collection_date, download_count) " +
+            "values ($1, $2) " +
+            UpsertBuilder.BuildOnConflict(KeyColumns, UpdateColumns);
+
         public override async Task<bool> RunAsync(
             WorkflowActivityContext context,
             DiagridDashboardInput input)
@@ -68,10 +80,8 @@ namespace DaprStats
                 
                 if (!input.SkipStorage)
                 {
-                    const string tableName = "diagrid_dashboard";
-                    var sqlText = $"insert into {tableName} (collection_date, download_count) values ($1, $2)";
                     var sqlParameters = new object[] { data.CollectionDate, data.DownloadCount };
-                    await _output.InsertAsync(sqlText, sqlParameters);
+                    await _output.InsertAsync(InsertSql, sqlParameters);
                 }
                 
                 return true;

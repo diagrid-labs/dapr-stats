@@ -1,0 +1,227 @@
+-- Add per-ISO-week deduplication to the seven collector tables that have no
+-- unique constraint, so a second CollectorWorkflow run in the same week
+-- updates the stored measurement instead of appending a duplicate row.
+--
+-- Design: docs/superpowers/specs/2026-09-08-collector-week-deduplication-design.md
+-- Plan:   docs/superpowers/plans/2026-09-08-collector-week-deduplication.md
+--
+-- WHY: duplicates happened on 2026-09-01 and again on 2026-09-07. The trigger
+-- is GitHub's scheduler, not operator error - scheduled runs on this workflow
+-- have been delayed by 2h, by 19h39m, and once by 8 days. A delayed run looks
+-- skipped, someone dispatches manually, and the delayed run lands anyway.
+--
+-- collection_week is GENERATED ALWAYS ... STORED, so it cannot drift from
+-- collection_date and the application never writes it. Existing rows backfill
+-- on ADD COLUMN - no UPDATE and no SET NOT NULL step.
+--
+-- collection_week is deliberately NOT called week_start. In scarf_* and
+-- datadog_rum* that name means "the week this data describes"; here it means
+-- only "the week the run happened in". A Monday run's GitHub numbers mostly
+-- describe the PREVIOUS week, so joining these tables to
+-- scarf_company_views.week_start would be off by roughly a week.
+--
+-- Note on the DELETE below: it is NOT part of either incident above, both of
+-- which were already remediated. It resolves a separate, older collision - two
+-- `dapr` rows in ISO week 2026-07-27, from a partial retry run on 07-29 and the
+-- full run on 08-01 - which is simply the only place in seven tables' history
+-- where two collections landed in one ISO week, and so the only row that blocks
+-- the new constraint.
+--
+-- Neon's HTTP /sql endpoint takes ONE STATEMENT PER REQUEST. Run this in the
+-- Neon SQL editor.
+--
+-- Statement 1 DELETES A ROW. Everything after it is additive.
+--
+--
+-- APPLIED 2026-09-08 by the maintainer. COMPLETE AND VERIFIED.
+--
+-- Section 1: id 152 deleted, one row. python_dapr 145 -> 144. The confirmation
+-- query returned 144 / 1 / true / false, as expected.
+--
+-- Section 2: all fourteen ALTER statements succeeded. Section 3 then showed 7
+-- collection_week columns, every one is_generated = ALWAYS with expression
+-- (date_trunc('week', collection_date))::date, and 9 constraints matching
+-- %_week_unique - the seven new ones plus the pre-existing
+-- datadog_rum_service_week_unique and datadog_rum_identified_week_unique.
+-- Section 4 returned zero rows.
+--
+-- IDEMPOTENCY PROVEN AGAINST THE LIVE DATABASE, not merely dry-run. Three
+-- workflow runs on 2026-09-08, all dispatched from
+-- feat/collector-week-deduplication rather than main: two narrow runs (Docker
+-- Hub only) at 18:37, then one full run with every input at its default,
+-- 18:40-18:53.
+--
+-- Row counts before the full run and after it, identical:
+--
+--   table               total rows   rows for week 2026-09-07
+--   nuget_dapr_client         6317                        248
+--   github_dapr               2776                         45
+--   npm_dapr_dapr             1132                         15
+--   python_dapr                144                          4
+--   dockerhub_images           144                          6
+--   discord_dapr                73                          1
+--   diagrid_dashboard           24                          1
+--
+-- One row per entity per week, and all seven carry a collection_date from the
+-- full run (18:40:50 through 18:53:42), so it genuinely wrote rather than
+-- silently skipping - flat counts alone would not have distinguished those.
+-- The two narrow runs are the tighter proof: the first wrote six dockerhub rows
+-- onto Monday's week slot and the second updated those same six, leaving the
+-- table at 144 rather than 150.
+--
+-- The delta view is no longer distorted. dockerhub_images_view for daprd:
+--
+--   collected     days_diff   pull_count_diff   avg_weekly_diff
+--   2026-09-08        7.431             49154             46303
+--   2026-09-01        7.850             56408             50300
+--
+-- 46,303 sits inside the healthy 41k-51k band. The duplicate pair this
+-- migration exists to prevent sat 0.0645 days apart and would have reported an
+-- avg_weekly_diff near 196,000.
+--
+-- Scarf and DataDog were re-collected by the same full run and their counts did
+-- not move either, so their own delete-then-insert idempotency held through it:
+-- scarf_building_block_views 2136, scarf_company_views 4060,
+-- scarf_diagrid_page_views 2917, datadog_rum 9, datadog_rum_identified 31.
+-- datadog_rum_users (82) and datadog_rum_identified_users (65) still carry
+-- 2026-09-07 timestamps, meaning no new users appeared - insert-if-new working
+-- as intended.
+--
+-- ONE CONSEQUENCE WORTH KNOWING. The rows for week 2026-09-07 now carry
+-- 2026-09-08 collection_date values: the runs above overwrote Monday's snapshot,
+-- because Tuesday falls in the same ISO week. That is last-write-wins behaving
+-- as designed and the week retains exactly one row per entity, but Monday's
+-- cumulative figures were replaced by Tuesday's, and github_dapr's rolling
+-- 7-day window shifted from 08-31..09-07 to 09-01..09-08.
+
+
+-- 1. Resolve the one historical collision. python_dapr holds two rows for
+--    `dapr` in ISO week 2026-07-27 and the unique index cannot be built until
+--    one goes:
+--
+--      id 152  2026-07-29 13:23:32  358,005 downloads   <- DELETE (partial retry run)
+--      id 153  2026-08-01 10:25:09  406,398 downloads   <- KEEP (full run, and
+--                                                          the later of the two,
+--                                                          matching last-write-wins)
+--
+--    Verify these two rows are what you expect before deleting.
+
+SELECT id, package_name, collection_date, download_count
+FROM python_dapr
+WHERE (date_trunc('week', collection_date))::date = DATE '2026-07-27'
+ORDER BY collection_date;
+
+DELETE FROM python_dapr WHERE id = 152;
+
+-- Confirm the delete before going further. Expected: 144 total rows, exactly
+-- one `dapr` row left in ISO week 2026-07-27, id 153 present, id 152 gone.
+SELECT (SELECT count(*) FROM python_dapr) AS total_rows_expect_144,
+       (SELECT count(*) FROM python_dapr
+         WHERE (date_trunc('week', collection_date))::date = DATE '2026-07-27'
+           AND package_name = 'dapr')                       AS dapr_week_rows_expect_1,
+       EXISTS (SELECT 1 FROM python_dapr WHERE id = 153)     AS id_153_present_expect_true,
+       EXISTS (SELECT 1 FROM python_dapr WHERE id = 152)     AS id_152_present_expect_false;
+
+
+-- 2. The seven columns and seven constraints. Each pair is independent; a
+--    failure part-way leaves the earlier tables migrated and the later ones
+--    untouched, which is safe - the code in Tasks 2-3 is not deployed yet.
+
+ALTER TABLE nuget_dapr_client
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE nuget_dapr_client
+  ADD CONSTRAINT nuget_dapr_client_week_unique
+  UNIQUE (collection_week, package_name, package_version);
+
+ALTER TABLE github_dapr
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE github_dapr
+  ADD CONSTRAINT github_dapr_week_unique
+  UNIQUE (collection_week, repo_name);
+
+ALTER TABLE npm_dapr_dapr
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE npm_dapr_dapr
+  ADD CONSTRAINT npm_dapr_dapr_week_unique
+  UNIQUE (collection_week, package_name, package_version);
+
+ALTER TABLE python_dapr
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE python_dapr
+  ADD CONSTRAINT python_dapr_week_unique
+  UNIQUE (collection_week, package_name);
+
+ALTER TABLE dockerhub_images
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE dockerhub_images
+  ADD CONSTRAINT dockerhub_images_week_unique
+  UNIQUE (collection_week, namespace, image_name);
+
+ALTER TABLE discord_dapr
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE discord_dapr
+  ADD CONSTRAINT discord_dapr_week_unique
+  UNIQUE (collection_week);
+
+ALTER TABLE diagrid_dashboard
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE diagrid_dashboard
+  ADD CONSTRAINT diagrid_dashboard_week_unique
+  UNIQUE (collection_week);
+
+
+-- 3. Verify. Expect 7 columns and 7 constraints.
+
+SELECT table_name, column_name, is_generated, generation_expression
+FROM information_schema.columns
+WHERE table_schema = 'public' AND column_name = 'collection_week'
+ORDER BY table_name;
+
+SELECT tc.table_name, tc.constraint_name,
+       string_agg(kcu.column_name, ', ' ORDER BY kcu.ordinal_position) AS key_columns
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+  ON kcu.constraint_name = tc.constraint_name
+ AND kcu.table_schema = tc.table_schema
+WHERE tc.table_schema = 'public'
+  AND tc.constraint_name LIKE '%\_week\_unique'
+GROUP BY tc.table_name, tc.constraint_name
+ORDER BY tc.table_name;
+
+
+-- 4. Confirm no table has more than one row per week per entity.
+--    Expect zero rows.
+--
+--    If section 2 succeeded in full this cannot fail, because Postgres refuses
+--    ADD CONSTRAINT UNIQUE over existing duplicates. Its value is the partial
+--    case: section 2 is fourteen statements and Neon's HTTP endpoint takes one
+--    per request, so a run can stop half way.
+--
+--    Be precise about what this does and does not catch. A table left
+--    unconstrained because its ADD CONSTRAINT hit a real duplicate shows up
+--    here. A table the run never reached at all has no duplicate to find and is
+--    invisible to this query - that one shows up in section 3's column and
+--    constraint counts. Run both sections, not just this one - and note that
+--    this query selects collection_week from all seven tables, so if section 2
+--    stopped before some table got its column, this aborts with 42703 rather
+--    than returning rows. That abort is a diagnosis, not a malfunction: it
+--    names the table section 2 never reached.
+
+WITH k AS (
+  SELECT 'nuget_dapr_client' t, collection_week wk, package_name || '@' || package_version key FROM nuget_dapr_client
+  UNION ALL SELECT 'github_dapr', collection_week, repo_name FROM github_dapr
+  UNION ALL SELECT 'npm_dapr_dapr', collection_week, package_name || '@' || package_version FROM npm_dapr_dapr
+  UNION ALL SELECT 'python_dapr', collection_week, package_name FROM python_dapr
+  UNION ALL SELECT 'dockerhub_images', collection_week, namespace || '/' || image_name FROM dockerhub_images
+  UNION ALL SELECT 'discord_dapr', collection_week, '(single)' FROM discord_dapr
+  UNION ALL SELECT 'diagrid_dashboard', collection_week, '(single)' FROM diagrid_dashboard
+)
+SELECT t AS table_name, wk AS collection_week, key, count(*) AS rows
+FROM k GROUP BY 1, 2, 3 HAVING count(*) > 1 ORDER BY 1, 2;
