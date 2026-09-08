@@ -14,3 +14,6 @@ scratch/
 
 # Subagent-driven-development scratch (ledgers, briefs, review packages)
 .superpowers/
+
+# Dapr run logs (contain customer company names)
+.dapr/logs/

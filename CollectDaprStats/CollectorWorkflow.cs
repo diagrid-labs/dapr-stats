@@ -122,6 +122,13 @@ namespace DaprStats
                     new ScarfInput(input.ScarfLeaderboardPixelIds, input.SkipStorage)));
             }
 
+            if (input.ScarfDiagridPagePixelIds?.Length > 0)
+            {
+                scarfTasks.Add(context.CallActivityAsync(
+                    nameof(GetScarfPageViews),
+                    new ScarfInput(input.ScarfDiagridPagePixelIds, input.SkipStorage)));
+            }
+
             if (scarfTasks.Count > 0)
             {
                 await Task.WhenAll(scarfTasks);
@@ -278,5 +285,6 @@ namespace DaprStats
         string[] DataDogRumIdentifiedServices,
         string[] ScarfBuildingBlockPixelIds,
         string[] ScarfLeaderboardPixelIds,
+        string[] ScarfDiagridPagePixelIds,
         bool SkipStorage);
 }

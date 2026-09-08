@@ -24,6 +24,7 @@ builder.Services.AddSingleton<IGitHubClient>(_ => {
 builder.Services.AddSingleton<DiscordRestClient>();
 builder.Services.AddSingleton(daprClient);
 builder.Services.AddSingleton<PostgresOutput>();
+builder.Services.AddSingleton<ScarfExportClient>();
 builder.Services.AddSingleton<PackageDataChecker>();
 builder.Services.AddDaprWorkflow();
 

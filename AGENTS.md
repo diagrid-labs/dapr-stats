@@ -14,7 +14,7 @@ A .NET 10 web service that uses Dapr Workflow to collect Dapr SDK and community 
 | Test | `dotnet test dapr-stats.sln` |
 | Run locally | `dapr run -f .`, then send a request from [local-tests.http](local-tests.http) |
 
-The test suite is 139 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of the activities or the workflow itself.
+The test suite is 186 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of any activity's `RunAsync` or of the workflow itself, but pure helpers extracted from activities — such as `GetScarfPageViews.Aggregate` and `GetScarfPageViews.MissingSites` — are covered.
 
 CI is two workflows: [build.yml](.github/workflows/build.yml) restores, builds and tests on every push and PR to `main`, and [run-workflow.yaml](.github/workflows/run-workflow.yaml) does the weekly collection.
 
@@ -40,7 +40,7 @@ local-tests.http         the canonical way to drive the workflow by hand
 Three Dapr components carry the infrastructure:
 
 - **`daprstats`** (`bindings.postgresql`) — every write and read goes through it, wrapped by `PostgresOutput.InsertAsync` / `ReadAsync`. There is no EF Core and no direct Npgsql usage; SQL is written by hand with `$1`-style positional parameters.
-- **`secretstore`** (`secretstores.local.env`) — secrets are read from the process environment. `dapr.yaml` forwards the seven variables the code needs.
+- **`secretstore`** (`secretstores.local.env`) — secrets are read from the process environment. `dapr.yaml` forwards the eight variables the code needs.
 - **`workflowstore`** (`state.in-memory`) — **workflow state does not survive a restart.** A run interrupted halfway cannot be resumed and must be started again from the beginning.
 
 ## Adding a collector
@@ -85,10 +85,21 @@ These are all verified in the current code, not guesses:
   the per-parent reading of DataDog's 10,000-groups cap.
 - **`nuget_dapr_client` is a misnomer.** That one table holds all nine NuGet packages, distinguished by the `package_name` column.
 - **`PostgresOuput.cs`** is misspelled on disk; the class inside is `PostgresOutput`.
-- **Scarf's owner slug is case-sensitive.** `https://api.scarf.sh/v3/insights/Dapr/...` — the v3 endpoints return `404 Organization not found` for `dapr`. The comment in `GetScarfBuildingBlockViews.cs` says as much.
-- **Scarf writes are delete-then-insert per ISO week**, which is what makes re-running a week idempotent. Any change to that write path needs the same guarantee.
+- **Scarf's owner slug is case-sensitive, and there are now two accounts.**
+  `Dapr` and `Diagrid`; the v3 endpoints return `404 Organization not found` for
+  a lowercased slug. The slug and the token secret name are no longer consts on
+  a shared URL — each activity declares its own `Owner` and `ApiTokenSecret` and
+  passes them to `ScarfExportClient`. Diagrid page rows live in
+  `scarf_diagrid_page_views`, separate from the two Dapr tables, so neither
+  table needs an `account` column yet.
+- **`ScarfExportRequest.GroupByArtifact` is `bool?` on purpose.** Omitting
+  `group_by_artifact` and sending `group_by_artifact=true` are different
+  requests. `GetScarfCompanyViews` sends `false` to merge its two pixels;
+  `GetScarfBuildingBlockViews` and `GetScarfPageViews` omit it. Do not collapse
+  it to a plain `bool`.
+- **Scarf writes are delete-then-insert per ISO week**, which is what makes re-running a week idempotent. Any change to that write path needs the same guarantee. `GetScarfPageViews` scopes its delete per ISO week *and site* (`week_start` and `site`), not just per week: a site whose pixel has gone quiet across the whole three-week window is left untouched rather than deleted, while a healthy site still gets its normal per-week delete-then-insert, including for a week it genuinely had zero rows.
 - **A full run is slow by design.** The package loops retry up to three times with a five-minute backoff between attempts, so collection can take ~25 minutes. The CI job polls with a 25-minute deadline inside a 30-minute job timeout; anything that lengthens the retry path needs both raised.
-- **`workflow_dispatch` allows at most 10 inputs.** `run-workflow.yaml` is exactly at the cap, which is why the Docker Hub images, Datadog services and Scarf pixel IDs are `FIXED_*` env values behind checkboxes rather than editable fields.
+- **`workflow_dispatch` allows at most 10 inputs.** `run-workflow.yaml` is exactly at the cap, which is why the Docker Hub images, Datadog services and Scarf pixel IDs are `FIXED_*` env values behind a toggle rather than editable fields. `collect_scarf` is a `choice` (`all`/`none`/`dapr`/`diagrid`) rather than a checkbox, so one Scarf account can be collected without rewriting the other's three weeks — that cost no extra input, which a second checkbox would have.
 - **An emptied text input comes back as its default.** GitHub substitutes the `default:` when a `workflow_dispatch` text input is submitted empty, so a cleared field cannot be told apart from an omitted one. This once caused a manual run to collect every package after the fields had deliberately been emptied, duplicating a day of package data. The package inputs therefore take `all` / `none` / an explicit list, since `none` is a value GitHub cannot override. Boolean inputs are not affected: an unchecked box submits a real `false`.
 - **Input defaults do not apply to scheduled runs at all.** GitHub leaves `inputs.*` empty for `schedule`, which the `all` keyword handles: empty resolves the same way as `all`, to the `DEFAULT_*` env value.
 
@@ -138,7 +149,7 @@ The exception aborts the statement, so nothing persists. `P0001 DRY RUN OK` mean
 
 ## Secrets
 
-Seven environment variables, listed in the README and forwarded by `dapr.yaml`: `POSTGRESQLCONNECTION`, `DAPRSTATSGITHUBPAT`, `DISCORDBOTTOKEN`, `DAPRDISCORDSERVERID`, `DATADOGAPIKEY`, `DATADOGAPPKEY`, `SCARF_DAPR_API_TOKEN`. In CI they come from repository secrets of the same name.
+Eight environment variables, listed in the README and forwarded by `dapr.yaml`: `POSTGRESQLCONNECTION`, `DAPRSTATSGITHUBPAT`, `DISCORDBOTTOKEN`, `DAPRDISCORDSERVERID`, `DATADOGAPIKEY`, `DATADOGAPPKEY`, `SCARF_DAPR_API_TOKEN`, `SCARF_DIAGRID_API_TOKEN`. In CI they come from repository secrets of the same name.
 
 `CollectDaprStats/secrets.json` holds real credentials. It is gitignored and untracked — never commit it, never print its contents, and never copy values out of it into a file, a commit message or a tool call.
 
@@ -148,8 +159,8 @@ Do not run `git add`, `git commit`, `git push`, or any other state-changing git 
 
 ## Planning docs
 
-Features here are specced before they are built. `docs/superpowers/specs/` holds the design and `docs/superpowers/plans/` the implementation plan, both named `YYYY-MM-DD-<feature>`. The three most recent — package collection retry, Datadog RUM collection, Scarf event collection — are worth reading before touching those areas.
+Features here are specced before they are built. `docs/superpowers/specs/` holds the design and `docs/superpowers/plans/` the implementation plan, both named `YYYY-MM-DD-<feature>`. The three most recent — Scarf Diagrid page collection, the identified-user/organisation many-to-many fix, and Datadog identified-user collection — are worth reading before touching those areas.
 
 ## Known planned work
 
-Scarf collection supports one account (Dapr). Adding a second needs more than another token: the owner slug is a hardcoded `const` in both Scarf activities, the secret key is a compile-time `const`, and neither `scarf_building_block_views` nor `scarf_company_views` has an account column — their unique constraints would silently merge two accounts' rows, and the per-week delete would have each account wiping the other's data.
+Scarf collection now covers two accounts, Dapr and Diagrid, each activity carrying its own `Owner` and `ApiTokenSecret` into `ScarfExportClient`. What's still outstanding: `scarf_building_block_views` and `scarf_company_views` have no account column, so those two tables remain Dapr-only. That hasn't bitten anything because Diagrid rows live in their own `scarf_diagrid_page_views` table, but a future account writing to either of the original two would need that column added, folded into the unique constraint and into the per-week DELETE, or the accounts would silently merge and overwrite each other.

@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Text;
-using Dapr.Client;
 using Dapr.Workflow;
 
 namespace DaprStats
@@ -16,10 +14,7 @@ namespace DaprStats
         // `Dapr` is capitalised deliberately. /v2/* accepts `dapr`, but /v3/*
         // returns 404 {"detail":"Organization not found"} for anything but
         // `Dapr`. Confirmed 2026-09-01.
-        private const string ExportUrl =
-            "https://api.scarf.sh/v3/insights/Dapr/aggregations/export";
-
-        private const string SecretStore = "secretstore";
+        private const string Owner = "Dapr";
         private const string ApiTokenSecret = "SCARF_DAPR_API_TOKEN";
 
         private const string TableName = "scarf_building_block_views";
@@ -31,27 +26,21 @@ namespace DaprStats
         private static readonly string?[] ColumnCasts =
             ["date", null, null, null, null, null, null];
 
-        private readonly HttpClient _httpClient;
+        private readonly ScarfExportClient _scarf;
         private readonly PostgresOutput _output;
-        private readonly DaprClient _daprClient;
 
         public GetScarfBuildingBlockViews(
-            IHttpClientFactory httpClientFactory,
-            PostgresOutput output,
-            DaprClient daprClient)
+            ScarfExportClient scarf,
+            PostgresOutput output)
         {
-            _httpClient = httpClientFactory.CreateClient();
+            _scarf = scarf;
             _output = output;
-            _daprClient = daprClient;
         }
 
         public override async Task<bool> RunAsync(
             WorkflowActivityContext context,
             ScarfInput input)
         {
-            var secrets = await _daprClient.GetSecretAsync(SecretStore, ApiTokenSecret);
-            var token = secrets[ApiTokenSecret];
-
             // One request covers all three weeks: rollup=weekly returns one
             // bucket per week. end_date is exclusive, verified 2026-09-01.
             var weeks = IsoWeek.CompleteWeeksBefore(DateTime.UtcNow, WeeksPerRun);
@@ -61,7 +50,15 @@ namespace DaprStats
             IReadOnlyList<ScarfAggregationResponse.Row> rows;
             try
             {
-                rows = await FetchAsync(input.PixelIds, from, to, token);
+                rows = await _scarf.FetchAsync(new ScarfExportRequest(
+                    Owner,
+                    ApiTokenSecret,
+                    input.PixelIds,
+                    from,
+                    to,
+                    Breakdown: null,
+                    BreakdownSet: "by-referer,by-company",
+                    GroupByArtifact: null));
             }
             catch (Exception ex)
             {
@@ -137,41 +134,6 @@ namespace DaprStats
             }
 
             return allSucceeded;
-        }
-
-        private async Task<IReadOnlyList<ScarfAggregationResponse.Row>> FetchAsync(
-            string[] pixelIds, DateOnly from, DateOnly to, string token)
-        {
-            var url = new StringBuilder(ExportUrl);
-            url.Append("?start_date=").Append(Iso(from));
-            url.Append("&end_date=").Append(Iso(to));
-
-            foreach (var pixelId in pixelIds)
-            {
-                url.Append("&tracking_pixel_id=").Append(Uri.EscapeDataString(pixelId));
-            }
-
-            url.Append("&rollup=weekly");
-
-            // The comma is left unescaped: this is the exact form verified
-            // against the live API on 2026-09-01.
-            url.Append("&breakdown_set=by-referer,by-company");
-            url.Append("&format=json");
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, url.ToString());
-            request.Headers.Add("Authorization", $"Bearer {token}");
-
-            var response = await _httpClient.SendAsync(request);
-            var payload = await response.Content.ReadAsByteArrayAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new HttpRequestException(
-                    $"Scarf returned {(int)response.StatusCode}: " +
-                    Encoding.UTF8.GetString(payload));
-            }
-
-            return ScarfAggregationResponse.Parse(payload);
         }
 
         /// <summary>
@@ -266,9 +228,6 @@ namespace DaprStats
                 await _output.InsertAsync(sqlText, parameters.ToArray());
             }
         }
-
-        private static string Iso(DateOnly date) =>
-            date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         private sealed record BuildingBlockRow(
             string BuildingBlock,
