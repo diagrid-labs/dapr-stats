@@ -146,7 +146,11 @@ ORDER BY tc.table_name;
 --    unconstrained because its ADD CONSTRAINT hit a real duplicate shows up
 --    here. A table the run never reached at all has no duplicate to find and is
 --    invisible to this query - that one shows up in section 3's column and
---    constraint counts. Run both sections, not just this one.
+--    constraint counts. Run both sections, not just this one - and note that
+--    this query selects collection_week from all seven tables, so if section 2
+--    stopped before some table got its column, this aborts with 42703 rather
+--    than returning rows. That abort is a diagnosis, not a malfunction: it
+--    names the table section 2 never reached.
 
 WITH k AS (
   SELECT 'nuget_dapr_client' t, collection_week wk, package_name || '@' || package_version key FROM nuget_dapr_client

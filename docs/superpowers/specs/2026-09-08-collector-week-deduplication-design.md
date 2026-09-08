@@ -365,8 +365,11 @@ Deploying before step 2 breaks every insert immediately, since `ON CONFLICT
 migration leads. That leaves a window in which the *old* code's plain `INSERT`
 meets the new constraint on a second same-week run and raises a unique
 violation instead of duplicating — a loud failure rather than a silent one, and
-bounded by `MaxAttempts = 3`, but it would burn a run. Apply and deploy in the
-same sitting.
+bounded by `MaxAttempts = 3`, but it would burn a run. One exception, worth
+knowing before the window opens: `GetGitHubRepoData` catches every exception,
+logs it and still reports success, so for that one collector the failure is
+silent rather than loud - the run would appear to succeed with the week's
+GitHub rows missing. Apply and deploy in the same sitting.
 
 Neon's HTTP endpoint takes one statement per request, so the file is written
 for the Neon SQL editor with statements separate rather than as one
