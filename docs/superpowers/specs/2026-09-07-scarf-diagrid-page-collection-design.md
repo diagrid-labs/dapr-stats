@@ -202,13 +202,24 @@ Flow, mirroring `GetScarfBuildingBlockViews`:
 3. `Aggregate` maps each row's referer through `ScarfPage.TryGetPage`, drops
    rows that do not resolve, and re-sums by
    `(week, site, path, company_name, company_domain)`.
-4. **Zero-row guard.** If every week aggregated to nothing, log a warning naming
-   the likely causes and `return false` *before the first `DELETE`*. Zero rows
-   is indistinguishable between a genuinely quiet three weeks, a wrong or
-   revoked pixel id answered with HTTP 200 and `{"data":[]}`, and a host rename
-   that stops `ScarfPage` matching anything. Any of those would otherwise delete
-   three real weeks and write nothing back, and the oldest of the three is
-   outside the next run's window, so it would be gone for good.
+4. **Per-site zero-row guard.** `MissingSites` reports which of `ScarfPage.Sites`
+   produced no rows in any of the three weeks. Zero rows for a site is
+   indistinguishable between a genuinely quiet three weeks for that site, a
+   wrong or revoked pixel id answered with HTTP 200 and `{"data":[]}`, and a
+   host rename that stops `ScarfPage` matching anything for that site — and
+   because the two pixels are answered independently, one going bad does not
+   stop the other's rows from coming back. Two cases:
+   - **Every site missing.** Nothing healthy to write. Log a warning naming
+     the likely causes and `return false` *before the first `DELETE`*, exactly
+     as the old all-sites guard did.
+   - **Some but not all sites missing.** Log a warning naming the missing
+     site(s) and the healthy ones continuing. The missing site's stored rows
+     are never deleted — its pixel is presumed broken or revoked, so deleting
+     three real weeks and writing nothing back would lose data the next run
+     cannot repair, since the oldest of the three weeks falls outside its
+     window. The healthy sites still store normally, including a per-week
+     `DELETE` for a healthy site's own genuinely quiet week. `allSucceeded`
+     starts `false` in this case, so a degraded run is reported as a failure.
 5. Per week: log the row, page and company counts; skip storage entirely when
    `input.SkipStorage`; otherwise `StoreAsync`. A week Scarf returned nothing
    for is still written, because a genuinely empty week has to clear the
@@ -219,22 +230,36 @@ Flow, mirroring `GetScarfBuildingBlockViews`:
 
 Delete-then-insert per ISO week, for the same reason as the existing tables: a
 page Scarf re-attributes to a different company must not linger, and an upsert
-would leave the old `(page, company)` pair behind as a phantom forever.
+would leave the old `(page, company)` pair behind as a phantom forever. Unlike
+the existing tables, the `DELETE` is also scoped **per site**, and `StoreAsync`
+takes the caller's list of healthy sites (from step 4's guard) and loops over
+it:
 
 ```sql
-delete from scarf_diagrid_page_views where week_start = $1::date
+delete from scarf_diagrid_page_views where week_start = $1::date and site = $2
 ```
 
-then chunked inserts of
+then, for that site's rows only, chunked inserts of
 `(week_start, site, page_path, company_name, company_domain, views,
 unique_visitors, collection_date)` built with
 `SqlValuesBuilder.Build(chunk.Length, ColumnCasts)` where `ColumnCasts` is
-`["date", null, null, null, null, null, null, null]`.
+`["date", null, null, null, null, null, null, null]`. `collectionDate` is
+still computed once per `StoreAsync` call, shared across every site's inserts
+in that call.
 
-The Dapr binding has no transaction, so a failure between the `DELETE` and the
-last `INSERT` leaves that week short until the next run's three-week overlap
-repairs it. This is the same exposure the existing Scarf tables carry and is
-accepted for the same reason.
+Scoping the delete by site is what makes per-site degradation in step 4
+possible: a site left out of the `sites` list because its pixel has gone quiet
+across the whole window never has its `DELETE` run at all, so its stored rows
+are never touched, while a healthy site still gets its normal delete-then-
+insert for every week — including a week that site genuinely had zero rows,
+which still needs its `DELETE` to clear stale rows even though nothing is
+inserted after it. This relies on `scarf_diagrid_page_views_unique` leading
+with `(week_start, site, …)`, so no new index is needed to serve it.
+
+The Dapr binding has no transaction, so a failure between a site's `DELETE` and
+its last `INSERT` leaves that site's week short until the next run's
+three-week overlap repairs it. This is the same exposure the existing Scarf
+tables carry and is accepted for the same reason.
 
 ### Referer normalisation
 

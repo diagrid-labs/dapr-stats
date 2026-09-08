@@ -236,4 +236,26 @@ public class GetScarfPageViewsTests
 
         Assert.Equal(["diagrid.io", "docs.diagrid.io"], missing);
     }
+
+    [Fact]
+    public void MissingSites_SitePresentInOneWeekOnly_IsNotReportedMissing()
+    {
+        // A site with rows in some weeks but not others is a genuinely quiet
+        // week, not a broken pixel: it must still get its per-week DELETE in
+        // RunAsync rather than being treated as missing and left untouched.
+        var earlier = new DateOnly(2026, 8, 17);
+
+        var byWeek = GetScarfPageViews.Aggregate([
+            new ScarfAggregationResponse.Row(
+                earlier, "https://diagrid.io/pricing", "Acme", "acme.com", 1, 1),
+            new ScarfAggregationResponse.Row(
+                earlier, "https://docs.diagrid.io/catalyst", "Acme", "acme.com", 1, 1),
+            new ScarfAggregationResponse.Row(
+                Week, "https://docs.diagrid.io/catalyst", "Acme", "acme.com", 1, 1),
+        ]);
+
+        // diagrid.io has rows in `earlier` but none in `Week` — a quiet week
+        // for that site, not an absent one across the whole run.
+        Assert.Empty(GetScarfPageViews.MissingSites(byWeek));
+    }
 }

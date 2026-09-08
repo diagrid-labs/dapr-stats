@@ -109,31 +109,46 @@ namespace DaprStats
             // answers each independently — a bad or rotated docs.diagrid.io
             // pixel does not stop diagrid.io rows from coming back, so a
             // guard that only checks the combined total stays silent while
-            // one site's rows quietly disappear. Either failure would
-            // otherwise delete three real weeks of that site's data below and
-            // write nothing back, and the three-week window means the oldest
-            // of them is gone for good before the next run could repair it.
-            // Bail out before the first DELETE rather than risk that.
+            // one site's rows quietly disappear.
             //
-            // This is a deliberate fail-closed trade-off: a week in which one
-            // site genuinely has zero attributed views also skips storage for
-            // both sites, which is accepted because at current volume that is
-            // not a realistic scenario, and failing closed here is the same
-            // trade the original all-sites guard made.
+            // Two situations need opposite handling here:
+            //
+            // - Every site is missing: there is nothing healthy to write, and
+            //   a missing site's stored rows must never be deleted, so bail
+            //   out before the first DELETE.
+            // - Some sites are missing and some are not: treat the missing
+            //   site's pixel as broken or revoked. Leave its stored rows
+            //   standing — do not run its DELETE for any of the three weeks
+            //   — and continue storing the healthy sites normally, including
+            //   their per-week DELETE for weeks where a healthy site
+            //   genuinely had no rows (a quiet week, not a missing site).
             var missing = MissingSites(byWeek);
+
+            if (missing.Length == ScarfPage.Sites.Length)
+            {
+                // Every site empty: same unrecoverable case the guard has
+                // always covered. Bail before the first DELETE.
+                Console.WriteLine(
+                    "WARNING: Scarf Diagrid pages returned zero rows for every site " +
+                    $"across all {WeeksPerRun} weeks. Skipping storage entirely (no " +
+                    "deletes performed). Likely causes: a wrong or revoked API token, " +
+                    "or wrong tracking_pixel_ids.");
+                return false;
+            }
+
+            var healthySites = ScarfPage.Sites.Where(site => !missing.Contains(site)).ToArray();
+            var allSucceeded = missing.Length == 0;
+
             if (missing.Length > 0)
             {
                 Console.WriteLine(
                     $"WARNING: Scarf Diagrid pages returned zero rows for " +
-                    $"{string.Join(", ", missing)} across all {WeeksPerRun} " +
-                    "weeks. Skipping storage entirely (no deletes performed). " +
-                    "Likely causes: a wrong or revoked tracking_pixel_id for " +
-                    "that site, or a host change that moved it out of " +
-                    "ScarfPage's allow-list.");
-                return false;
+                    $"{string.Join(", ", missing)} across all {WeeksPerRun} weeks. " +
+                    "Leaving that site's stored rows untouched and continuing with " +
+                    $"{string.Join(", ", healthySites)}. Likely causes: a wrong or " +
+                    "revoked tracking_pixel_id for that site, or a host change that " +
+                    "moved it out of ScarfPage's allow-list.");
             }
-
-            var allSucceeded = true;
 
             // Every complete week is written, including one Scarf returned no
             // rows for. A genuinely empty week has to clear the previous
@@ -159,7 +174,7 @@ namespace DaprStats
 
                 try
                 {
-                    await StoreAsync(week.WeekStart, weekRows);
+                    await StoreAsync(week.WeekStart, weekRows, healthySites);
                 }
                 catch (Exception ex)
                 {
@@ -286,50 +301,65 @@ namespace DaprStats
             return true;
         }
 
-        private async Task StoreAsync(DateOnly weekStart, IReadOnlyList<PageRow> rows)
+        /// <summary>
+        /// Delete-then-insert per ISO week, for the same reason as the
+        /// existing tables: a page Scarf re-attributes to a different
+        /// company must not linger, and an upsert would leave the old
+        /// (page, company) pair behind as a phantom forever. The DELETE is
+        /// also scoped per site so a site whose pixel has gone quiet across
+        /// all three weeks — filtered out of <paramref name="sites"/> by the
+        /// caller — can never have its stored rows deleted here, while a
+        /// healthy site that simply had a quiet week still gets that week's
+        /// DELETE, clearing any stale rows before storing nothing for it.
+        /// The binding has no transaction, so a failure between a site's
+        /// delete and its last insert leaves that site's week short until
+        /// the next run's three-week overlap repairs it.
+        /// </summary>
+        private async Task StoreAsync(
+            DateOnly weekStart, IReadOnlyList<PageRow> rows, string[] sites)
         {
             var weekText = weekStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-            // Delete-then-insert rather than upsert: Scarf re-attributing a
-            // visitor can remove a (page, company) pair from a week, and an
-            // upsert would leave the old pair behind as a phantom for ever.
-            // The binding has no transaction, so a failure between the delete
-            // and the last insert leaves the week short until the next run's
-            // three-week overlap repairs it.
-            await _output.InsertAsync(
-                $"delete from {TableName} where week_start = $1::date",
-                [weekText]);
-
-            if (rows.Count == 0)
-            {
-                return;
-            }
-
             var collectionDate = DateTime.UtcNow;
 
-            foreach (var chunk in rows.Chunk(RowsPerStatement))
+            foreach (var site in sites)
             {
-                var sqlText =
-                    $"insert into {TableName} " +
-                    "(week_start, site, page_path, company_name, company_domain, " +
-                    " views, unique_visitors, collection_date) " +
-                    $"values {SqlValuesBuilder.Build(chunk.Length, ColumnCasts)}";
+                // Scoped by site so a site whose pixel has gone quiet can
+                // never delete its own history, and a healthy site still
+                // stores.
+                await _output.InsertAsync(
+                    $"delete from {TableName} where week_start = $1::date and site = $2",
+                    [weekText, site]);
 
-                var parameters = new List<object>(chunk.Length * ColumnCasts.Length);
-
-                foreach (var row in chunk)
+                var siteRows = rows.Where(row => row.Site == site).ToArray();
+                if (siteRows.Length == 0)
                 {
-                    parameters.Add(weekText);
-                    parameters.Add(row.Site);
-                    parameters.Add(row.PagePath);
-                    parameters.Add(row.CompanyName);
-                    parameters.Add(row.CompanyDomain);
-                    parameters.Add(row.Views);
-                    parameters.Add(row.UniqueVisitors);
-                    parameters.Add(collectionDate);
+                    continue;
                 }
 
-                await _output.InsertAsync(sqlText, parameters.ToArray());
+                foreach (var chunk in siteRows.Chunk(RowsPerStatement))
+                {
+                    var sqlText =
+                        $"insert into {TableName} " +
+                        "(week_start, site, page_path, company_name, company_domain, " +
+                        " views, unique_visitors, collection_date) " +
+                        $"values {SqlValuesBuilder.Build(chunk.Length, ColumnCasts)}";
+
+                    var parameters = new List<object>(chunk.Length * ColumnCasts.Length);
+
+                    foreach (var row in chunk)
+                    {
+                        parameters.Add(weekText);
+                        parameters.Add(row.Site);
+                        parameters.Add(row.PagePath);
+                        parameters.Add(row.CompanyName);
+                        parameters.Add(row.CompanyDomain);
+                        parameters.Add(row.Views);
+                        parameters.Add(row.UniqueVisitors);
+                        parameters.Add(collectionDate);
+                    }
+
+                    await _output.InsertAsync(sqlText, parameters.ToArray());
+                }
             }
         }
 
