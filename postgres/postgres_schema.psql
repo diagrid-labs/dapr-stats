@@ -866,3 +866,72 @@ SELECT
     COALESCE(SUM(views) FILTER (WHERE site = 'docs.diagrid.io'), 0) AS docs_views
 FROM scarf_diagrid_page_views
 GROUP BY week_start, company_name, company_domain;
+
+---
+
+-- Per-ISO-week deduplication for the seven collector tables that previously
+-- had no unique constraint.
+--
+-- NOT YET APPLIED as of 2026-09-08. This records the DDL that
+-- postgres/add-collector-week-dedup-2026-09-08.psql will apply; that migration's
+-- own final step replaces this paragraph with "Applied <date>" once it has run.
+-- Do not write "Applied" here before it is true: this is the file people read to
+-- learn the current schema.
+--
+-- collection_week is GENERATED, so the application never writes it and it
+-- cannot drift from collection_date.
+--
+-- NOTE: collection_week is NOT week_start. In scarf_* and datadog_rum* that
+-- name means "the week this data describes". Here it means only "the week the
+-- run happened in" - a deduplication slot. A Monday run's github_dapr numbers
+-- mostly describe the previous week, so joining these tables to
+-- scarf_company_views.week_start would be off by roughly a week.
+
+ALTER TABLE nuget_dapr_client
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE nuget_dapr_client
+  ADD CONSTRAINT nuget_dapr_client_week_unique
+  UNIQUE (collection_week, package_name, package_version);
+
+ALTER TABLE github_dapr
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE github_dapr
+  ADD CONSTRAINT github_dapr_week_unique
+  UNIQUE (collection_week, repo_name);
+
+ALTER TABLE npm_dapr_dapr
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE npm_dapr_dapr
+  ADD CONSTRAINT npm_dapr_dapr_week_unique
+  UNIQUE (collection_week, package_name, package_version);
+
+ALTER TABLE python_dapr
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE python_dapr
+  ADD CONSTRAINT python_dapr_week_unique
+  UNIQUE (collection_week, package_name);
+
+ALTER TABLE dockerhub_images
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE dockerhub_images
+  ADD CONSTRAINT dockerhub_images_week_unique
+  UNIQUE (collection_week, namespace, image_name);
+
+ALTER TABLE discord_dapr
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE discord_dapr
+  ADD CONSTRAINT discord_dapr_week_unique
+  UNIQUE (collection_week);
+
+ALTER TABLE diagrid_dashboard
+  ADD COLUMN collection_week date
+  GENERATED ALWAYS AS ((date_trunc('week', collection_date))::date) STORED;
+ALTER TABLE diagrid_dashboard
+  ADD CONSTRAINT diagrid_dashboard_week_unique
+  UNIQUE (collection_week);

@@ -943,8 +943,13 @@ Append the fourteen statements from step 1's section 2 to the end of the file, p
 
 ```sql
 -- Per-ISO-week deduplication for the seven collector tables that previously
--- had no unique constraint. Applied 2026-09-08; see
--- postgres/add-collector-week-dedup-2026-09-08.psql.
+-- had no unique constraint.
+--
+-- NOT YET APPLIED as of 2026-09-08. This records the DDL that
+-- postgres/add-collector-week-dedup-2026-09-08.psql will apply; Task 5 step 7
+-- replaces this paragraph with "Applied <date>" once the migration has run.
+-- Do not write "Applied" here before it is true: this is the file people read
+-- to learn the current schema, and it is the only such annotation in it.
 --
 -- collection_week is GENERATED, so the application never writes it and it
 -- cannot drift from collection_date.
@@ -1060,9 +1065,11 @@ LIMIT 3;
 
 Expected: `days_diff` in the 6-8 range, `avg_weekly_diff` in the tens of thousands. A `days_diff` near zero with an `avg_weekly_diff` in the hundreds of thousands would mean two rows survived in one week and the constraint is not doing its job. Healthy history for reference: `days_diff` 6.3-23.1, `avg_weekly_diff` 41k-51k.
 
-- [ ] **Step 6: Record the outcome in the migration file**
+- [ ] **Step 6: Record the outcome in BOTH files**
 
-Add an `APPLIED <date> ... COMPLETE AND VERIFIED` block to the header of `postgres/add-collector-week-dedup-2026-09-08.psql`, following the convention in `postgres/remove-duplicate-collection-2026-09-07.psql` and `postgres/add-user-orgs-link-table-2026-09-03.psql`: the verification numbers, the row counts before and after the double run, and confirmation that the DataDog and Scarf tables were untouched.
+First, add an `APPLIED <date> ... COMPLETE AND VERIFIED` block to the header of `postgres/add-collector-week-dedup-2026-09-08.psql`, following the convention in `postgres/remove-duplicate-collection-2026-09-07.psql` and `postgres/add-user-orgs-link-table-2026-09-03.psql`: the verification numbers, the row counts before and after the double run, and confirmation that the DataDog and Scarf tables were untouched.
+
+Then — **do not skip this** — flip the annotation in `postgres/postgres_schema.psql`. It currently reads `NOT YET APPLIED as of 2026-09-08 ...`; replace that paragraph with `Applied <date>; see postgres/add-collector-week-dedup-2026-09-08.psql.` Until you do, the file that documents the current schema understates what is actually in the database. This is the mirror of the earlier hazard: before Task 5 a false "Applied" misleads, and after Task 5 a stale "NOT YET APPLIED" misleads just as much.
 
 - [ ] **Step 7: Commit** *(ask the repository owner before running any git command)*
 
