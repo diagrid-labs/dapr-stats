@@ -18,6 +18,18 @@ namespace DaprStats
             _daprClient = daprClient;
         }
 
+        private const string TableName = "discord_dapr";
+
+        private static readonly string[] KeyColumns = ["collection_week"];
+
+        private static readonly string[] UpdateColumns =
+            ["collection_date", "member_count"];
+
+        internal static readonly string InsertSql =
+            $"insert into {TableName} (collection_date, member_count) " +
+            "values ($1, $2) " +
+            UpsertBuilder.BuildOnConflict(KeyColumns, UpdateColumns);
+
         public override async Task<bool> RunAsync(
             WorkflowActivityContext context,
             DiscordInput input)
@@ -42,10 +54,8 @@ namespace DaprStats
 
             if (!input.SkipStorage)
             {
-                const string tableName = "discord_dapr";
-                var sqlText = $"insert into {tableName} (collection_date, member_count) values ($1, $2)";
                 var sqlParameters = new object[] { data.CollectionDate, data.MemberCount };
-                await _output.InsertAsync(sqlText, sqlParameters);
+                await _output.InsertAsync(InsertSql, sqlParameters);
             }
 
             return true;

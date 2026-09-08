@@ -15,6 +15,23 @@ namespace DaprStats
             _output = output;
         }
 
+        private const string TableName = "dockerhub_images";
+
+        // Declared above InsertSql: static initialisers run in textual order.
+        private static readonly string[] KeyColumns =
+            ["collection_week", "namespace", "image_name"];
+
+        private static readonly string[] UpdateColumns =
+            ["collection_date", "pull_count"];
+
+        /// <summary>
+        /// Internal so the composed statement can be asserted without a database.
+        /// </summary>
+        internal static readonly string InsertSql =
+            $"insert into {TableName} (namespace, image_name, collection_date, pull_count) " +
+            "values ($1, $2, $3, $4) " +
+            UpsertBuilder.BuildOnConflict(KeyColumns, UpdateColumns);
+
         public override async Task<bool> RunAsync(
             WorkflowActivityContext context,
             DockerHubInput input)
@@ -38,10 +55,8 @@ namespace DaprStats
 
                 if (!input.SkipStorage)
                 {
-                    const string tableName = "dockerhub_images";
-                    var sqlText = $"insert into {tableName} (namespace, image_name, collection_date, pull_count) values ($1, $2, $3, $4)";
                     var sqlParameters = new object[] { dockerHubImageData.Namespace, dockerHubImageData.ImageName, dockerHubImageData.CollectionDate, dockerHubImageData.PullCount };
-                    await _output.InsertAsync(sqlText, sqlParameters);
+                    await _output.InsertAsync(InsertSql, sqlParameters);
                 }
 
                 return true;

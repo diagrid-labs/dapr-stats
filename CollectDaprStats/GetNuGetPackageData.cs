@@ -14,6 +14,19 @@ namespace DaprStats
             _output = output;
         }
 
+        private const string TableName = "nuget_dapr_client";
+
+        private static readonly string[] KeyColumns =
+            ["collection_week", "package_name", "package_version"];
+
+        private static readonly string[] UpdateColumns =
+            ["collection_date", "download_count"];
+
+        internal static readonly string InsertSql =
+            $"insert into {TableName} (package_name, collection_date, package_version, download_count) " +
+            "values ($1, $2, $3, $4) " +
+            UpsertBuilder.BuildOnConflict(KeyColumns, UpdateColumns);
+
         public override async Task<bool> RunAsync(WorkflowActivityContext context, NuGetPackageInput input)
         {
             var repository = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
@@ -42,10 +55,8 @@ namespace DaprStats
                 
                 if (!input.SkipStorage)
                 {
-                    const string tableName = "nuget_dapr_client";
-                    var sqlText = $"insert into {tableName} (package_name, collection_date, package_version, download_count) values ($1, $2, $3, $4)";
                     var sqlParameters = new object[] { nugetPackageVersionData.PackageName, nugetPackageVersionData.CollectionDate, nugetPackageVersionData.PackageVersion, nugetPackageVersionData.Downloads};
-                    await _output.InsertAsync(sqlText, sqlParameters);
+                    await _output.InsertAsync(InsertSql, sqlParameters);
                 }
             }
 
