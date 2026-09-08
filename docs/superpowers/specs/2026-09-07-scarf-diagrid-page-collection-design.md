@@ -219,7 +219,13 @@ Flow, mirroring `GetScarfBuildingBlockViews`:
      cannot repair, since the oldest of the three weeks falls outside its
      window. The healthy sites still store normally, including a per-week
      `DELETE` for a healthy site's own genuinely quiet week. `allSucceeded`
-     starts `false` in this case, so a degraded run is reported as a failure.
+     starts `false` in this case, so the activity itself returns `false` for
+     a degraded run. That does not reach the workflow result or the CI job's
+     exit status, though: `CollectorWorkflow` calls the non-generic
+     `context.CallActivityAsync(...)` for every Scarf activity, discarding
+     the `bool` each one returns. A degraded run surfaces in this activity's
+     own log output and the WARNING above, not as a workflow failure or a
+     non-zero job exit code.
 5. Per week: log the row, page and company counts; skip storage entirely when
    `input.SkipStorage`; otherwise `StoreAsync`. A week Scarf returned nothing
    for is still written, because a genuinely empty week has to clear the
@@ -255,6 +261,13 @@ insert for every week — including a week that site genuinely had zero rows,
 which still needs its `DELETE` to clear stale rows even though nothing is
 inserted after it. This relies on `scarf_diagrid_page_views_unique` leading
 with `(week_start, site, …)`, so no new index is needed to serve it.
+
+This has a residual risk worth naming: a pixel revoked *mid-window* — rows in
+the oldest of the three weeks, none in the two after it — still counts as
+healthy under the per-site guard, so both now-quiet weeks get their `DELETE`
+with nothing written back, silently losing the middle week that a previous
+run had stored; this is inherent in the delete-then-insert-per-week design,
+not a defect.
 
 The Dapr binding has no transaction, so a failure between a site's `DELETE` and
 its last `INSERT` leaves that site's week short until the next run's
@@ -422,6 +435,17 @@ asked for, multiple `tracking_pixel_id` parameters are emitted, dates format as
 `yyyy-MM-dd` under a non-invariant current culture, and the owner slug's
 capitalisation is preserved.
 
+**`GetScarfPageViewsTests`** — `Aggregate`'s referer-variant collapsing,
+per-site/per-company/per-domain distinctness, unresolvable-referer dropping,
+week-keying, and the company-field and key-byte-budget length guards.
+`MissingSites`'s five cases (both present, one missing each way, both
+missing, present-in-one-week-only). Plus the two data-loss-critical helpers:
+`HealthySites` returns the complement of `missing` — both single-site cases,
+none-missing, and all-missing — and `BuildDeleteForSite` returns SQL
+containing the `week_start = $1::date` cast and `and site = $2`, with
+`Parameters[0]` the week text and `Parameters[1]` the site, so a swapped
+parameter array is caught.
+
 `ScarfAggregationResponseTests`, `ScarfRefererTests` and everything else are
 untouched and must still pass.
 
@@ -438,6 +462,12 @@ In this order:
    which is what proves delete-then-insert is still idempotent.
 4. Query `scarf_diagrid_company_pages_view` for the most recent complete week
    and sanity-check the top few companies against the Scarf web UI.
+5. Re-run with one pixel ID deliberately omitted from `PixelIds`, so that
+   site produces zero rows for all three weeks. Confirm the WARNING names
+   only that site, and that its stored row count in
+   `scarf_diagrid_page_views` is unchanged afterwards while the other site's
+   rows update normally — proving the missing-site guard leaves prior data
+   in place rather than deleting it.
 
 Queries go through Neon's HTTP `/sql` endpoint; there is no `psql` on this
 machine.

@@ -136,7 +136,7 @@ namespace DaprStats
                 return false;
             }
 
-            var healthySites = ScarfPage.Sites.Where(site => !missing.Contains(site)).ToArray();
+            var healthySites = HealthySites(missing);
             var allSucceeded = missing.Length == 0;
 
             if (missing.Length > 0)
@@ -144,10 +144,10 @@ namespace DaprStats
                 Console.WriteLine(
                     $"WARNING: Scarf Diagrid pages returned zero rows for " +
                     $"{string.Join(", ", missing)} across all {WeeksPerRun} weeks. " +
-                    "Leaving that site's stored rows untouched and continuing with " +
-                    $"{string.Join(", ", healthySites)}. Likely causes: a wrong or " +
-                    "revoked tracking_pixel_id for that site, or a host change that " +
-                    "moved it out of ScarfPage's allow-list.");
+                    "Leaving the stored rows for those sites untouched and " +
+                    $"continuing with {string.Join(", ", healthySites)}. Likely causes: " +
+                    "a wrong or revoked tracking_pixel_id, or a host change that moved " +
+                    "a site out of ScarfPage's allow-list.");
             }
 
             // Every complete week is written, including one Scarf returned no
@@ -256,6 +256,18 @@ namespace DaprStats
         }
 
         /// <summary>
+        /// The sites whose rows may be rewritten this run: every known site except
+        /// those that produced nothing across the whole window.
+        /// </summary>
+        /// <remarks>
+        /// This complement is the single step that stops a broken pixel's history
+        /// being deleted, which is why it is extracted and tested rather than
+        /// written inline.
+        /// </remarks>
+        internal static string[] HealthySites(string[] missing) =>
+            ScarfPage.Sites.Where(site => !missing.Contains(site)).ToArray();
+
+        /// <summary>
         /// Guards the unique key's storability, in both dimensions Postgres
         /// enforces: each VARCHAR(255) company column measured in characters,
         /// and the whole key's UTF-8 byte length against the btree index-row
@@ -302,6 +314,16 @@ namespace DaprStats
         }
 
         /// <summary>
+        /// The per-week, per-site DELETE. Extracted so its parameter order can be
+        /// asserted: it is the only statement here capable of unrecoverable data
+        /// loss, and a swapped parameter array would delete the wrong rows.
+        /// </summary>
+        internal static (string Sql, object[] Parameters) BuildDeleteForSite(
+            string weekText, string site) =>
+            ($"delete from {TableName} where week_start = $1::date and site = $2",
+             [weekText, site]);
+
+        /// <summary>
         /// Delete-then-insert per ISO week, for the same reason as the
         /// existing tables: a page Scarf re-attributes to a different
         /// company must not linger, and an upsert would leave the old
@@ -326,9 +348,8 @@ namespace DaprStats
                 // Scoped by site so a site whose pixel has gone quiet can
                 // never delete its own history, and a healthy site still
                 // stores.
-                await _output.InsertAsync(
-                    $"delete from {TableName} where week_start = $1::date and site = $2",
-                    [weekText, site]);
+                var delete = BuildDeleteForSite(weekText, site);
+                await _output.InsertAsync(delete.Sql, delete.Parameters);
 
                 var siteRows = rows.Where(row => row.Site == site).ToArray();
                 if (siteRows.Length == 0)

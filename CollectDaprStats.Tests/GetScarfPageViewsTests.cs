@@ -258,4 +258,51 @@ public class GetScarfPageViewsTests
         // for that site, not an absent one across the whole run.
         Assert.Empty(GetScarfPageViews.MissingSites(byWeek));
     }
+
+    [Fact]
+    public void HealthySites_WebsiteMissing_ReturnsOnlyDocs()
+    {
+        // Kills an inverted `Where`: a mutant that returned the missing sites
+        // instead of the complement would report diagrid.io as healthy here.
+        var healthy = GetScarfPageViews.HealthySites(["diagrid.io"]);
+
+        Assert.Equal(["docs.diagrid.io"], healthy);
+    }
+
+    [Fact]
+    public void HealthySites_DocsMissing_ReturnsOnlyWebsite()
+    {
+        var healthy = GetScarfPageViews.HealthySites(["docs.diagrid.io"]);
+
+        Assert.Equal(["diagrid.io"], healthy);
+    }
+
+    [Fact]
+    public void HealthySites_NoneMissing_ReturnsBothSites()
+    {
+        var healthy = GetScarfPageViews.HealthySites([]);
+
+        Assert.Equal(ScarfPage.Sites, healthy);
+    }
+
+    [Fact]
+    public void HealthySites_AllSitesMissing_ReturnsEmpty()
+    {
+        var healthy = GetScarfPageViews.HealthySites(ScarfPage.Sites);
+
+        Assert.Empty(healthy);
+    }
+
+    [Fact]
+    public void BuildDeleteForSite_ScopesToWeekAndSite()
+    {
+        // Kills a swapped parameter array: Parameters[0] must be the week
+        // text (bound to the $1::date cast) and Parameters[1] the site
+        // (bound to $2), never the reverse.
+        var delete = GetScarfPageViews.BuildDeleteForSite("2026-08-24", "diagrid.io");
+
+        Assert.Contains("week_start = $1::date", delete.Sql);
+        Assert.Contains("and site = $2", delete.Sql);
+        Assert.Equal(["2026-08-24", "diagrid.io"], delete.Parameters);
+    }
 }
