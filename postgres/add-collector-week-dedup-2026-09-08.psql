@@ -31,6 +31,68 @@
 -- Neon SQL editor.
 --
 -- Statement 1 DELETES A ROW. Everything after it is additive.
+--
+--
+-- APPLIED 2026-09-08 by the maintainer. COMPLETE AND VERIFIED.
+--
+-- Section 1: id 152 deleted, one row. python_dapr 145 -> 144. The confirmation
+-- query returned 144 / 1 / true / false, as expected.
+--
+-- Section 2: all fourteen ALTER statements succeeded. Section 3 then showed 7
+-- collection_week columns, every one is_generated = ALWAYS with expression
+-- (date_trunc('week', collection_date))::date, and 9 constraints matching
+-- %_week_unique - the seven new ones plus the pre-existing
+-- datadog_rum_service_week_unique and datadog_rum_identified_week_unique.
+-- Section 4 returned zero rows.
+--
+-- IDEMPOTENCY PROVEN AGAINST THE LIVE DATABASE, not merely dry-run. Three
+-- workflow runs on 2026-09-08, all dispatched from
+-- feat/collector-week-deduplication rather than main: two narrow runs (Docker
+-- Hub only) at 18:37, then one full run with every input at its default,
+-- 18:40-18:53.
+--
+-- Row counts before the full run and after it, identical:
+--
+--   table               total rows   rows for week 2026-09-07
+--   nuget_dapr_client         6317                        248
+--   github_dapr               2776                         45
+--   npm_dapr_dapr             1132                         15
+--   python_dapr                144                          4
+--   dockerhub_images           144                          6
+--   discord_dapr                73                          1
+--   diagrid_dashboard           24                          1
+--
+-- One row per entity per week, and all seven carry a collection_date from the
+-- full run (18:40:50 through 18:53:42), so it genuinely wrote rather than
+-- silently skipping - flat counts alone would not have distinguished those.
+-- The two narrow runs are the tighter proof: the first wrote six dockerhub rows
+-- onto Monday's week slot and the second updated those same six, leaving the
+-- table at 144 rather than 150.
+--
+-- The delta view is no longer distorted. dockerhub_images_view for daprd:
+--
+--   collected     days_diff   pull_count_diff   avg_weekly_diff
+--   2026-09-08        7.431             49154             46303
+--   2026-09-01        7.850             56408             50300
+--
+-- 46,303 sits inside the healthy 41k-51k band. The duplicate pair this
+-- migration exists to prevent sat 0.0645 days apart and would have reported an
+-- avg_weekly_diff near 196,000.
+--
+-- Scarf and DataDog were re-collected by the same full run and their counts did
+-- not move either, so their own delete-then-insert idempotency held through it:
+-- scarf_building_block_views 2136, scarf_company_views 4060,
+-- scarf_diagrid_page_views 2917, datadog_rum 9, datadog_rum_identified 31.
+-- datadog_rum_users (82) and datadog_rum_identified_users (65) still carry
+-- 2026-09-07 timestamps, meaning no new users appeared - insert-if-new working
+-- as intended.
+--
+-- ONE CONSEQUENCE WORTH KNOWING. The rows for week 2026-09-07 now carry
+-- 2026-09-08 collection_date values: the runs above overwrote Monday's snapshot,
+-- because Tuesday falls in the same ISO week. That is last-write-wins behaving
+-- as designed and the week retains exactly one row per entity, but Monday's
+-- cumulative figures were replaced by Tuesday's, and github_dapr's rolling
+-- 7-day window shifted from 08-31..09-07 to 09-01..09-08.
 
 
 -- 1. Resolve the one historical collision. python_dapr holds two rows for
