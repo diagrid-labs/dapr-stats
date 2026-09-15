@@ -142,4 +142,53 @@ public class ScarfExportClientTests
             CultureInfo.CurrentCulture = original;
         }
     }
+
+    [Fact]
+    public void BuildUrl_JavaPackageShape_SendsTheQueryDslRaw()
+    {
+        // The exact form verified against the live API on 2026-09-15: the `*`
+        // is NOT percent-encoded. Same reasoning as the unescaped comma in
+        // breakdown_set — this is a verified request, not a guess.
+        var request = new ScarfExportRequest(
+            "Dapr",
+            "SCARF_DAPR_API_TOKEN",
+            [],
+            From,
+            To,
+            Breakdown: null,
+            BreakdownSet: "by-version",
+            GroupByArtifact: null,
+            Query: "io.dapr*");
+
+        Assert.Equal(
+            "https://api.scarf.sh/v3/insights/Dapr/aggregations/export" +
+            "?start_date=2026-08-10" +
+            "&end_date=2026-08-31" +
+            "&query=io.dapr*" +
+            "&rollup=weekly" +
+            "&breakdown_set=by-version" +
+            "&format=json",
+            ScarfExportClient.BuildUrl(request));
+    }
+
+    [Fact]
+    public void BuildUrl_QueryWithPixelIds_Throws()
+    {
+        // Scarf's v3 spec: the package-name query combines with neither
+        // package_id nor tracking_pixel_id. Failing here beats a runtime 422.
+        var request = new ScarfExportRequest(
+            "Dapr",
+            "SCARF_DAPR_API_TOKEN",
+            [DaprDocsPixel],
+            From,
+            To,
+            Breakdown: null,
+            BreakdownSet: "by-version",
+            GroupByArtifact: null,
+            Query: "io.dapr*");
+
+        var ex = Assert.Throws<ArgumentException>(
+            () => ScarfExportClient.BuildUrl(request));
+        Assert.Contains("query", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
