@@ -197,6 +197,63 @@ jobs:
             printf '%s' ''
           }
 
+          # Validates the whole `packages` spec once, before resolve_group runs
+          # once per ecosystem and would otherwise repeat the same complaint
+          # four times. resolve_group's own parsing is deliberately permissive
+          # (it has to accept `all`/`none` in any case and bare package
+          # lists), which means a malformed group is otherwise silently
+          # misread rather than rejected:
+          #   - a bare token with no ':' (e.g. `nuget` instead of `nuget:all`)
+          #     makes both `${group%%:*}` and `${group#*:}` yield the whole
+          #     token, so if it happens to equal the ecosystem key being
+          #     resolved, that ecosystem silently "collects" a package
+          #     literally named after the key instead of a real list;
+          #   - a typoed ecosystem key (e.g. `jva:all`) matches no ecosystem,
+          #     so every ecosystem silently resolves to "collect nothing" --
+          #     a run that reports success but stores no package data at all.
+          # This file has already shipped a silent wrong-collection bug twice
+          # (see AGENTS.md); a plausible typo must fail loudly, not quietly.
+          validate_packages_spec() {
+            local spec keyword group gkey glist
+            spec="$(printf '%s' "${IN_PACKAGES:-}" | tr -d '[:space:]')"
+            keyword="$(printf '%s' "$spec" | tr '[:upper:]' '[:lower:]')"
+
+            # Empty (scheduled runs), `all` and `none` need no further checks.
+            case "$keyword" in
+              ''|all|none) return 0 ;;
+            esac
+
+            local IFS=';'
+            for group in $spec; do
+              # Leading/trailing/doubled ';' produce empty tokens -- harmless.
+              [ -z "$group" ] && continue
+
+              case "$group" in
+                *:*) ;;
+                *)
+                  echo "::error::packages: '$group' is missing ':' -- expected <eco>:<list> (eco = nuget, npm, python, java)" >&2
+                  exit 1
+                  ;;
+              esac
+
+              gkey="$(printf '%s' "${group%%:*}" | tr '[:upper:]' '[:lower:]')"
+              glist="${group#*:}"
+
+              case "$gkey" in
+                nuget|npm|python|java) ;;
+                *)
+                  echo "::error::packages: '$group' names an unrecognised ecosystem '$gkey' -- expected one of nuget, npm, python, java" >&2
+                  exit 1
+                  ;;
+              esac
+
+              if [ -z "$glist" ]; then
+                echo "::error::packages: '$group' has no value after ':' -- expected all, none, or a comma-separated package list" >&2
+                exit 1
+              fi
+            done
+          }
+
           norm_bool() {
             if [ "$1" = "true" ]; then echo true; else echo false; fi
           }
@@ -223,6 +280,8 @@ jobs:
               | map(gsub("^\\s+|\\s+$"; ""))
               | map(select(length > 0))'
           }
+
+          validate_packages_spec
 
           NUGET_CSV=$(resolve_group nuget "$DEFAULT_NUGET_PACKAGES")
           NPM_CSV=$(resolve_group npm "$DEFAULT_NPM_PACKAGES")
