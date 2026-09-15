@@ -84,4 +84,28 @@ public class IsoWeekTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => IsoWeek.CompleteWeeksBefore(Utc("2026-08-26T12:00:00Z"), 0));
     }
+
+    [Fact]
+    public void CompleteWeeksBefore_TwoWeeks_FirstIsTheWeekBeforeLast()
+    {
+        // What GetJavaPackageData collects. Scarf ingests two to three days
+        // late, so the most recently completed week is skipped.
+        // Monday 2026-09-14 08:43 UTC is a scheduled run.
+        var weeks = IsoWeek.CompleteWeeksBefore(
+            new DateTime(2026, 9, 14, 8, 43, 0, DateTimeKind.Utc), 2);
+
+        Assert.Equal(new DateOnly(2026, 8, 31), weeks[0].WeekStart);
+        Assert.Equal(new DateOnly(2026, 9, 7), weeks[1].WeekStart);
+    }
+
+    [Fact]
+    public void CompleteWeeksBefore_TwoWeeks_MidweekManualRunPicksTheSameWeek()
+    {
+        // A Wednesday re-run must target the same week as Monday's run, so the
+        // upsert overwrites rather than adding a second week.
+        var weeks = IsoWeek.CompleteWeeksBefore(
+            new DateTime(2026, 9, 16, 14, 0, 0, DateTimeKind.Utc), 2);
+
+        Assert.Equal(new DateOnly(2026, 8, 31), weeks[0].WeekStart);
+    }
 }

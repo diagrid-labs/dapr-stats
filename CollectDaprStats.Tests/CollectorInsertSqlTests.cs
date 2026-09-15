@@ -130,4 +130,22 @@ public class CollectorInsertSqlTests
         // repo_name is the only inserted column that is part of the key.
         Assert.Equal(inserted.Where(c => c != "repo_name").Order(), updated.Order());
     }
+
+    [Fact]
+    public void Java_InsertSql_ChunksRowsAndUpsertsOnWeekStart()
+    {
+        // The only collector that chunks AND upserts: the Scarf collectors
+        // chunk without upserting, the package collectors upsert one row at a
+        // time. This asserts the two builders compose.
+        Assert.Equal(
+            "insert into java_dapr (package_name, collection_date, package_version, " +
+            "download_count, collected_over_number_of_days, week_start, unique_origins) " +
+            "values ($1,$2,$3,$4,$5,$6::date,$7),($8,$9,$10,$11,$12,$13::date,$14) " +
+            "on conflict (week_start,package_name,package_version) do update set " +
+            "collection_date=excluded.collection_date," +
+            "download_count=excluded.download_count," +
+            "unique_origins=excluded.unique_origins," +
+            "collected_over_number_of_days=excluded.collected_over_number_of_days",
+            GetJavaPackageData.BuildInsertSql(2));
+    }
 }
