@@ -54,6 +54,38 @@ namespace DaprStats
             $"values {SqlValuesBuilder.Build(rowCount, ColumnCasts)} " +
             OnConflict;
 
+        /// <summary>
+        /// Flattens a chunk of rows into the parameter array <see
+        /// cref="BuildInsertSql"/>'s placeholders bind against. Extracted so
+        /// the order can be asserted directly: two adjacent numeric fields
+        /// (<c>row.Downloads</c> and the constant <see
+        /// cref="CollectedOverNumberOfDays"/>) would compile fine transposed
+        /// and silently corrupt <c>java_dapr</c> in production.
+        /// </summary>
+        internal static object[] BuildParameters(
+            IReadOnlyList<ScarfAggregationResponse.PackageRow> chunk,
+            DateTime collectionDate)
+        {
+            var parameters = new List<object>(chunk.Count * ColumnCasts.Length);
+
+            foreach (var row in chunk)
+            {
+                parameters.Add(row.PackageName);
+                parameters.Add(collectionDate);
+                parameters.Add(row.Version);
+                parameters.Add(row.Downloads);
+                parameters.Add(CollectedOverNumberOfDays);
+                // Per row rather than from the requested window: if Scarf
+                // ever returns a bucket we did not ask for, label it
+                // honestly instead of stamping it with the wrong week.
+                parameters.Add(row.WeekStart.ToString(
+                    "yyyy-MM-dd", CultureInfo.InvariantCulture));
+                parameters.Add(row.UniqueOrigins);
+            }
+
+            return parameters.ToArray();
+        }
+
         private readonly ScarfExportClient _scarf;
         private readonly PostgresOutput _output;
 
@@ -119,25 +151,9 @@ namespace DaprStats
 
             foreach (var chunk in rows.Chunk(RowsPerStatement))
             {
-                var parameters = new List<object>(chunk.Length * ColumnCasts.Length);
-
-                foreach (var row in chunk)
-                {
-                    parameters.Add(row.PackageName);
-                    parameters.Add(input.CollectionDate);
-                    parameters.Add(row.Version);
-                    parameters.Add(row.Downloads);
-                    parameters.Add(CollectedOverNumberOfDays);
-                    // Per row rather than from the requested window: if Scarf
-                    // ever returns a bucket we did not ask for, label it
-                    // honestly instead of stamping it with the wrong week.
-                    parameters.Add(row.WeekStart.ToString(
-                        "yyyy-MM-dd", CultureInfo.InvariantCulture));
-                    parameters.Add(row.UniqueOrigins);
-                }
-
                 await _output.InsertAsync(
-                    BuildInsertSql(chunk.Length), parameters.ToArray());
+                    BuildInsertSql(chunk.Length),
+                    BuildParameters(chunk, input.CollectionDate));
             }
 
             return true;

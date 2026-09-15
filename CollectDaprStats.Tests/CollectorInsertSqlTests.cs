@@ -148,4 +148,33 @@ public class CollectorInsertSqlTests
             "collected_over_number_of_days=excluded.collected_over_number_of_days",
             GetJavaPackageData.BuildInsertSql(2));
     }
+
+    [Fact]
+    public void Java_BuildParameters_MatchesTheInsertColumnListInOrder()
+    {
+        // Kills a swapped parameter array: every value below is distinct and
+        // non-interchangeable (no two equal numbers), so transposing any two
+        // adjacent parameters.Add calls in RunAsync's loop — e.g. row.Downloads
+        // with the CollectedOverNumberOfDays constant, both numeric and both
+        // compiling fine — changes the resulting array and fails this test.
+        var collectionDate = new DateTime(2026, 9, 15, 3, 0, 0, DateTimeKind.Utc);
+
+        var chunk = new[]
+        {
+            new ScarfAggregationResponse.PackageRow(
+                new DateOnly(2026, 8, 31), "io.dapr:dapr-sdk", "1.9.0", 1111L, 22L),
+            new ScarfAggregationResponse.PackageRow(
+                new DateOnly(2026, 9, 7), "io.dapr:dapr-sdk-actors", "1.10.0", 3333L, 44L),
+        };
+
+        var parameters = GetJavaPackageData.BuildParameters(chunk, collectionDate);
+
+        Assert.Equal(
+            new object[]
+            {
+                "io.dapr:dapr-sdk", collectionDate, "1.9.0", 1111L, 7, "2026-08-31", 22L,
+                "io.dapr:dapr-sdk-actors", collectionDate, "1.10.0", 3333L, 7, "2026-09-07", 44L,
+            },
+            parameters);
+    }
 }
