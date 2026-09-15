@@ -1,5 +1,11 @@
 # Importing Java SDK data into Postgres
 
+> **Superseded from September 2026.** `GetJavaPackageData` collects all
+> eighteen `io.dapr` JVM packages from Scarf every week into `java_dapr`.
+> `java_dapr_sdk` is a frozen archive of this manual import: one package,
+> `dapr-sdk`, monthly, 2023-12 to 2025-04. Nothing writes to it any more.
+> The procedure below is kept only to explain how those rows were produced.
+
 1. Export the Java SDK data per month from SonarType.
 2. Open the csv file in a text editor and a the header row:
    `package_name,collection_date,package_version,download_count,percentage,collection_over_number_of_days`

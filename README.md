@@ -8,6 +8,7 @@ At the moment the data sources include:
 - NuGet package downloads for `Dapr.Client`, `Dapr.Workflow`, `Dapr.AspNetCore`, `Dapr.Extensions.Configuration`, `Dapr.Actors`, `Dapr.Messaging`, `Dapr.Jobs`, `CommunityToolkit.Aspire.Hosting.Dapr` and `Diagrid.AI.Microsoft.AgentFramework`
 - Npm package downloads for `@dapr/dapr`
 - Python package downloads for `dapr`, `dapr-agents`, `dapr-ext-workflow` and `diagrid`
+- Java package downloads for all 18 `io.dapr` and `io.dapr.spring` JVM packages, per version, via Scarf. Scarf ingests two to three days late, so each run collects the week *before* last rather than the week that just ended.
 - Docker Hub pull counts for `daprio/daprd`, `daprio/scheduler`, `daprio/operator`, `daprio/injector`, `daprio/sentry` and `daprio/placement`
 - GitHub data for all repositories under the dapr org:
   - Commits
@@ -67,9 +68,7 @@ The [Run CollectorWorkflow](.github/workflows/run-workflow.yaml) workflow runs o
 
 | Input | Type | Default | Effect |
 |---|---|---|---|
-| `nuget_packages` | `all` / `none` / list | `all` | NuGet downloads: the nine standard packages, nothing, or the names you give |
-| `npm_packages` | `all` / `none` / list | `all` | npm downloads: `@dapr/dapr`, nothing, or the names you give |
-| `python_packages` | `all` / `none` / list | `all` | PyPI downloads: the four standard packages, nothing, or the names you give |
+| `packages` | `all` / `none` / `<eco>:<list>` groups | `all` | Package downloads. `all` collects NuGet, npm, PyPI and Java at their standard lists; `none` skips them all. Groups joined by `;` collect **only** the ecosystems named — `nuget:Dapr.Client;java:all` collects one NuGet package and all Java, and skips npm and PyPI entirely. Ecosystem keys: `nuget`, `npm`, `python`, `java`. |
 | `collect_dockerhub` | checkbox | on | Docker Hub pulls for the `daprio/*` images |
 | `collect_datadog` | checkbox | on | Datadog RUM views and users, plus `conductor-ui` authenticated sessions and identified users |
 | `collect_scarf` | `all` / `none` / `dapr` / `diagrid` | `all` | Which Scarf accounts to collect. `dapr` is building block page views and company visits; `diagrid` is page views per company for `diagrid.io` and `docs.diagrid.io` |

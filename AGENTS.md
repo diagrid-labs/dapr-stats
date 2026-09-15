@@ -49,7 +49,7 @@ Three Dapr components carry the infrastructure:
 2. Guard every `InsertAsync` with `if (!input.SkipStorage)`. This is what makes dry runs safe.
 3. Add the list or flag to `CollectorWorkflowInput` in `CollectorWorkflow.cs` and guard the call site — lists with `.Length > 0`, flags with the bool. An empty list must mean "skip this source"; the GitHub Actions checkboxes rely on it. List entries can encode compound data (e.g. `service|env` pairs split on `|` in the workflow like `DockerHubImages` splits on `/`); guard with `?.Length > 0` when a payload field may be omitted entirely.
 4. Keep the workflow class deterministic: no `DateTime.Now`, no `Guid.NewGuid()`, no HTTP calls in `RunAsync`. `CollectionDate` is passed in from outside for exactly this reason, and all I/O belongs in activities. Use `context.CreateTimer`, never `Task.Delay`.
-5. Update all four of: `local-tests.http`, the `FIXED_*`/`DEFAULT_*` env values and inputs in `run-workflow.yaml`, the README data-source list, and `postgres/postgres_schema.psql`.
+5. Update all four of: `local-tests.http`, the `FIXED_*`/`DEFAULT_*` env values and inputs in `run-workflow.yaml`, the README data-source list, and `postgres/postgres_schema.psql`. A new *package* ecosystem needs no new dispatch input — add a `DEFAULT_<ECO>_PACKAGES` env value and one `resolve_group` call, since the single `packages` input already carries every ecosystem.
 
 ## Gotchas
 
@@ -103,6 +103,23 @@ These are all verified in the current code, not guesses:
 - **An emptied text input comes back as its default.** GitHub substitutes the `default:` when a `workflow_dispatch` text input is submitted empty, so a cleared field cannot be told apart from an omitted one. This once caused a manual run to collect every package after the fields had deliberately been emptied, duplicating a day of package data. The package inputs therefore take `all` / `none` / an explicit list, since `none` is a value GitHub cannot override. Boolean inputs are not affected: an unchecked box submits a real `false`.
 - **GitHub delays scheduled runs, sometimes by days.** Measured on this workflow: two hours, nineteen hours, and once eight days between the cron firing and the run starting. A delayed run looks skipped, someone dispatches manually, and the delayed run then lands anyway - which is what duplicated a week of data on 2026-09-07, after the input-validation fix above had already been made. This is why deduplication is enforced by database constraints rather than by runs not overlapping.
 - **Input defaults do not apply to scheduled runs at all.** GitHub leaves `inputs.*` empty for `schedule`, which the `all` keyword handles: empty resolves the same way as `all`, to the `DEFAULT_*` env value.
+- **Scarf ingests two to three days late.** Probed 2026-09-15, its newest
+  event anywhere was Saturday the 12th. Every complete week's
+  `max(last_seen)` lands on its Sunday; the most recent week's did not. The
+  raw effect is a ~25% shortfall that looks exactly like a real decline —
+  `dapr-sdk` read 20,413 for a week whose true value was nearer 28,000. This
+  is why `GetJavaPackageData` collects the week *before* last,
+  `CompleteWeeksBefore(date, 2)[0]`, and why `java_dapr.week_start` sits two
+  weeks behind `collection_date` rather than one.
+- **`package_id=all` is not JVM-only on the Scarf export.** It pulls in the
+  `Dapr CLI` artifact. `query=io.dapr*` returns exactly the eighteen JVM
+  packages and is what the collector sends; it also picks up a newly
+  registered package with no code change.
+- **`ScarfAggregationResponse` has two entry points and they are not
+  interchangeable.** `Parse` drops rows with a null `company_name`, which is
+  every row of a `by-version` breakdown; `ParsePackageVersions` is the one to
+  use for packages. A test asserts `Parse` still drops them, so collapsing the
+  two fails the build.
 
 ## Database
 
