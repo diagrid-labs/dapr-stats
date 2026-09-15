@@ -23,6 +23,86 @@ namespace DaprStats
 
         public static IReadOnlyList<Row> Parse(ReadOnlySpan<byte> json)
         {
+            var data = ReadDataArray(json);
+            var rows = new List<Row>(data.GetArrayLength());
+
+            foreach (var element in data.EnumerateArray())
+            {
+                var companyName = ReadString(element, "company_name");
+
+                // Defensive: a by-company breakdown only returns attributed
+                // traffic, so this has never been observed. A null here would
+                // otherwise reach a NOT NULL key column.
+                if (string.IsNullOrWhiteSpace(companyName))
+                {
+                    continue;
+                }
+
+                rows.Add(new Row(
+                    ReadWeekStart(element),
+                    ReadString(element, "referer"),
+                    companyName,
+                    ReadString(element, "company_domain") ?? string.Empty,
+                    ReadCount(element, "total"),
+                    ReadCount(element, "unique_origins")));
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// One row of a `breakdown_set=by-version` package export.
+        /// </summary>
+        public sealed record PackageRow(
+            DateOnly WeekStart,
+            string PackageName,
+            string Version,
+            long Downloads,
+            long UniqueOrigins);
+
+        /// <summary>
+        /// Parses a by-version package export.
+        /// </summary>
+        /// <remarks>
+        /// Separate from <see cref="Parse"/> because that one skips rows with
+        /// no `company_name`, which is every row of this breakdown.
+        /// </remarks>
+        public static IReadOnlyList<PackageRow> ParsePackageVersions(
+            ReadOnlySpan<byte> json)
+        {
+            var data = ReadDataArray(json);
+            var rows = new List<PackageRow>(data.GetArrayLength());
+
+            foreach (var element in data.EnumerateArray())
+            {
+                var packageName = ReadString(element, "artifact_name");
+                var version = ReadString(element, "version");
+
+                // Defensive: every probe row carried both. A null here would
+                // otherwise reach a NOT NULL key column.
+                if (string.IsNullOrWhiteSpace(packageName) ||
+                    string.IsNullOrWhiteSpace(version))
+                {
+                    continue;
+                }
+
+                rows.Add(new PackageRow(
+                    ReadWeekStart(element),
+                    packageName,
+                    version,
+                    ReadCount(element, "total"),
+                    ReadCount(element, "unique_origins")));
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Validates the `{"data":[...]}` envelope and returns the array.
+        /// Shared so both entry points reject a malformed body identically.
+        /// </summary>
+        private static JsonElement ReadDataArray(ReadOnlySpan<byte> json)
+        {
             if (json.IsEmpty)
             {
                 throw new FormatException("Scarf returned an empty response body.");
@@ -49,30 +129,7 @@ namespace DaprStats
                 throw new FormatException("Scarf response has no data array.");
             }
 
-            var rows = new List<Row>(data.GetArrayLength());
-
-            foreach (var element in data.EnumerateArray())
-            {
-                var companyName = ReadString(element, "company_name");
-
-                // Defensive: a by-company breakdown only returns attributed
-                // traffic, so this has never been observed. A null here would
-                // otherwise reach a NOT NULL key column.
-                if (string.IsNullOrWhiteSpace(companyName))
-                {
-                    continue;
-                }
-
-                rows.Add(new Row(
-                    ReadWeekStart(element),
-                    ReadString(element, "referer"),
-                    companyName,
-                    ReadString(element, "company_domain") ?? string.Empty,
-                    ReadCount(element, "total"),
-                    ReadCount(element, "unique_origins")));
-            }
-
-            return rows;
+            return data;
         }
 
         private static DateOnly ReadWeekStart(JsonElement element)

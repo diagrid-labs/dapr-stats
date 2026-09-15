@@ -8,6 +8,10 @@ public class ScarfAggregationResponseTests
     private static IReadOnlyList<ScarfAggregationResponse.Row> Parse(string json) =>
         ScarfAggregationResponse.Parse(Encoding.UTF8.GetBytes(json));
 
+    private static IReadOnlyList<ScarfAggregationResponse.PackageRow> ParsePackages(
+        string json) =>
+        ScarfAggregationResponse.ParsePackageVersions(Encoding.UTF8.GetBytes(json));
+
     [Fact]
     public void Parse_BuildingBlockRow_ReadsTheSixFieldsThatMatter()
     {
@@ -158,5 +162,86 @@ public class ScarfAggregationResponseTests
     public void Parse_NonObjectJson_Throws(string nonObjectJson)
     {
         Assert.Throws<FormatException>(() => Parse(nonObjectJson));
+    }
+
+    [Fact]
+    public void ParsePackageVersions_ByVersionRow_ReadsThePackageAndVersion()
+    {
+        // A real row from the 2026-09-15 probe, company fields null as they
+        // always are for a by-version breakdown.
+        var rows = ParsePackages("""
+        {"data":[{
+          "date":"2026-08-24","artifact":"0d1e80df-9a30-4b62-92e0-3814ce4bcffa",
+          "artifact_name":"io.dapr.spring/dapr-spring-boot-autoconfigure",
+          "artifact_type":"package","rollup":"weekly","breakdown":"by-version",
+          "breakdowns":["by-version"],
+          "country":null,"company_name":null,"company_domain":null,
+          "referer":null,"version":"1.16.1-rc-3","points":2500,
+          "company_sic_codes":[],"company_count":3,
+          "last_seen":"2026-08-30 00:00:00+00:00",
+          "total":6,"unique_origins":3,"unique_endpoints":1
+        }]}
+        """);
+
+        var row = Assert.Single(rows);
+        Assert.Equal(new DateOnly(2026, 8, 24), row.WeekStart);
+        Assert.Equal("io.dapr.spring/dapr-spring-boot-autoconfigure", row.PackageName);
+        Assert.Equal("1.16.1-rc-3", row.Version);
+        Assert.Equal(6, row.Downloads);
+        Assert.Equal(3, row.UniqueOrigins);
+    }
+
+    [Fact]
+    public void ParsePackageVersions_RowMissingArtifactNameOrVersion_IsSkipped()
+    {
+        // Defensive: never observed on a probe, but both reach NOT NULL key
+        // columns.
+        var rows = ParsePackages("""
+        {"data":[
+          {"date":"2026-08-24","artifact_name":null,"version":"1.16.1",
+           "total":5,"unique_origins":2},
+          {"date":"2026-08-24","artifact_name":"io.dapr/dapr-sdk","version":null,
+           "total":5,"unique_origins":2},
+          {"date":"2026-08-24","artifact_name":"io.dapr/dapr-sdk","version":"1.16.1",
+           "total":5,"unique_origins":2}
+        ]}
+        """);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("io.dapr/dapr-sdk", row.PackageName);
+    }
+
+    [Fact]
+    public void ParsePackageVersions_MultipleWeeks_KeepsEachRowsOwnWeek()
+    {
+        var rows = ParsePackages("""
+        {"data":[
+          {"date":"2026-08-24","artifact_name":"io.dapr/dapr-sdk","version":"1.16.1",
+           "total":10,"unique_origins":4},
+          {"date":"2026-08-31","artifact_name":"io.dapr/dapr-sdk","version":"1.16.1",
+           "total":20,"unique_origins":7}
+        ]}
+        """);
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(new DateOnly(2026, 8, 24), rows[0].WeekStart);
+        Assert.Equal(new DateOnly(2026, 8, 31), rows[1].WeekStart);
+    }
+
+    [Fact]
+    public void Parse_StillDropsNullCompanyRows_SoTheTwoPathsStayDistinct()
+    {
+        // Regression guard: if someone ever "simplifies" Parse and
+        // ParsePackageVersions into one method, this fails first.
+        var rows = Parse("""
+        {"data":[{
+          "date":"2026-08-24","artifact_name":"io.dapr/dapr-sdk",
+          "breakdown":"by-version","version":"1.16.1",
+          "company_name":null,"company_domain":null,"referer":null,
+          "total":5,"unique_origins":2
+        }]}
+        """);
+
+        Assert.Empty(rows);
     }
 }

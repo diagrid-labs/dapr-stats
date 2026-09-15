@@ -108,7 +108,14 @@ namespace DaprStats
         }
 
         public async Task<IReadOnlyList<ScarfAggregationResponse.Row>> FetchAsync(
-            ScarfExportRequest request)
+            ScarfExportRequest request) =>
+            ScarfAggregationResponse.Parse(await SendAsync(request));
+
+        public async Task<IReadOnlyList<ScarfAggregationResponse.PackageRow>>
+            FetchPackageVersionsAsync(ScarfExportRequest request) =>
+            ScarfAggregationResponse.ParsePackageVersions(await SendAsync(request));
+
+        private async Task<byte[]> SendAsync(ScarfExportRequest request)
         {
             var secrets = await _daprClient.GetSecretAsync(
                 SecretStore, request.ApiTokenSecret);
@@ -128,7 +135,7 @@ namespace DaprStats
                     Encoding.UTF8.GetString(payload));
             }
 
-            return ScarfAggregationResponse.Parse(payload);
+            return payload;
         }
 
         private static string Iso(DateOnly date) =>
