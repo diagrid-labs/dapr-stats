@@ -162,9 +162,9 @@ public class CollectorInsertSqlTests
         var chunk = new[]
         {
             new ScarfAggregationResponse.PackageRow(
-                new DateOnly(2026, 8, 31), "io.dapr:dapr-sdk", "1.9.0", 1111L, 22L),
+                new DateOnly(2026, 8, 31), "io.dapr/dapr-sdk", "1.9.0", 1111L, 22L),
             new ScarfAggregationResponse.PackageRow(
-                new DateOnly(2026, 9, 7), "io.dapr:dapr-sdk-actors", "1.10.0", 3333L, 44L),
+                new DateOnly(2026, 9, 7), "io.dapr/dapr-sdk-actors", "1.10.0", 3333L, 44L),
         };
 
         var parameters = GetJavaPackageData.BuildParameters(chunk, collectionDate);
@@ -172,8 +172,8 @@ public class CollectorInsertSqlTests
         Assert.Equal(
             new object[]
             {
-                "io.dapr:dapr-sdk", collectionDate, "1.9.0", 1111L, 7, "2026-08-31", 22L,
-                "io.dapr:dapr-sdk-actors", collectionDate, "1.10.0", 3333L, 7, "2026-09-07", 44L,
+                "io.dapr/dapr-sdk", collectionDate, "1.9.0", 1111L, 7, "2026-08-31", 22L,
+                "io.dapr/dapr-sdk-actors", collectionDate, "1.10.0", 3333L, 7, "2026-09-07", 44L,
             },
             parameters);
     }

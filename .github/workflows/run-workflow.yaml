@@ -178,6 +178,13 @@ jobs:
               none)   printf '%s' ''; return ;;
             esac
 
+            # Globbing is off for the word-split below: DEFAULT_JAVA_PACKAGES
+            # is `io.dapr*`, and an unquoted `*` in $spec must stay the
+            # literal character it is, not expand to a filename from the
+            # working directory. Every path out of this loop restores it
+            # before returning, since resolve_group's caller relies on the
+            # option being back to its normal state.
+            set -f
             local IFS=';'
             for group in $spec; do
               gkey="$(printf '%s' "${group%%:*}" | tr '[:upper:]' '[:lower:]')"
@@ -191,9 +198,11 @@ jobs:
                 # case-sensitive.
                 *)    printf '%s' "$glist" ;;
               esac
+              set +f
               return
             done
 
+            set +f
             printf '%s' ''
           }
 
@@ -214,7 +223,7 @@ jobs:
           # This file has already shipped a silent wrong-collection bug twice
           # (see AGENTS.md); a plausible typo must fail loudly, not quietly.
           validate_packages_spec() {
-            local spec keyword group gkey glist
+            local spec keyword group gkey glist matched
             spec="$(printf '%s' "${IN_PACKAGES:-}" | tr -d '[:space:]')"
             keyword="$(printf '%s' "$spec" | tr '[:upper:]' '[:lower:]')"
 
@@ -223,14 +232,25 @@ jobs:
               ''|all|none) return 0 ;;
             esac
 
+            matched=0
+            # Globbing is off for the word-split below: DEFAULT_JAVA_PACKAGES
+            # is `io.dapr*`, and an unquoted `*` in $spec must stay the
+            # literal character it is, not expand to a filename from the
+            # working directory. This function is called directly rather
+            # than through a subshell, so every path out of the loop below
+            # (including the error exits, harmless since exit ends the whole
+            # step anyway) restores it before leaving.
+            set -f
             local IFS=';'
             for group in $spec; do
               # Leading/trailing/doubled ';' produce empty tokens -- harmless.
               [ -z "$group" ] && continue
+              matched=1
 
               case "$group" in
                 *:*) ;;
                 *)
+                  set +f
                   echo "::error::packages: '$group' is missing ':' -- expected <eco>:<list> (eco = nuget, npm, python, java)" >&2
                   exit 1
                   ;;
@@ -242,16 +262,30 @@ jobs:
               case "$gkey" in
                 nuget|npm|python|java) ;;
                 *)
+                  set +f
                   echo "::error::packages: '$group' names an unrecognised ecosystem '$gkey' -- expected one of nuget, npm, python, java" >&2
                   exit 1
                   ;;
               esac
 
               if [ -z "$glist" ]; then
+                set +f
                 echo "::error::packages: '$group' has no value after ':' -- expected all, none, or a comma-separated package list" >&2
                 exit 1
               fi
             done
+            set +f
+
+            # Every token was empty -- e.g. ';;;', ';', '; ;'. Each was
+            # skipped by the guard above, so nothing was ever rejected, and
+            # every ecosystem would resolve to empty and the job would report
+            # success having collected nothing. npm and PyPI only serve "last
+            # week", so that silence is permanent data loss, not something a
+            # later run repairs.
+            if [ "$matched" -eq 0 ]; then
+              echo "::error::packages: '$spec' names no ecosystem group -- expected all, none, or <eco>:<list> groups separated by ';'" >&2
+              exit 1
+            fi
           }
 
           norm_bool() {

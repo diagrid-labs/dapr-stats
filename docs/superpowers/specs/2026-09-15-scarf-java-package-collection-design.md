@@ -359,9 +359,11 @@ covered:
   PII and can be committed.
 - A regression case asserting the existing `Parse` still drops null-company
   rows, so the two paths cannot later be collapsed by accident.
-- `ScarfExportClient.BuildUrl`: `query=` is emitted and escaped,
-  `group_by_artifact` is absent when `GroupByArtifact` is null, and `Query`
-  with a non-empty `PixelIds` throws.
+- `ScarfExportClient.BuildUrl`: `query=` is emitted raw, unescaped -- like the
+  comma in `breakdown_set`, this is the exact form verified against the live
+  API, and `Uri.EscapeDataString` would mangle the DSL's metacharacters
+  (`*`, `{`, `}`, `,`) -- `group_by_artifact` is absent when `GroupByArtifact`
+  is null, and `Query` with a non-empty `PixelIds` throws.
 - `CollectorInsertSqlTests`: the chunked-upsert statement — that
   `SqlValuesBuilder` placeholders and the `on conflict` tail compose into valid
   SQL with the conflict target matching `java_dapr_week_unique`.

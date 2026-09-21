@@ -121,8 +121,9 @@ namespace DaprStats
             }
             catch (Exception ex)
             {
-                // Not rethrown: this runs under Task.WhenAll alongside the
-                // other package collectors, and an unhandled exception would
+                // Not rethrown, for the same reason the write below is also
+                // guarded: this runs under Task.WhenAll alongside the other
+                // package collectors, and an unhandled exception here would
                 // fail the whole workflow and skip everything after it.
                 Console.WriteLine($"Failed to fetch Scarf Java data: {ex.Message}");
                 return false;
@@ -149,14 +150,41 @@ namespace DaprStats
                 return true;
             }
 
+            // Each chunk is an independent upsert (different rows, same
+            // on-conflict target), so one chunk's failure does not imply the
+            // next will also fail. A failed chunk is logged and counted, but
+            // the remaining chunks are still attempted rather than abandoned,
+            // for the same reason GetScarfBuildingBlockViews and
+            // GetScarfPageViews keep writing the rest of their weeks after
+            // one fails: partial data recovered now is strictly better than
+            // none, and the caller still learns the run was not clean.
+            var allSucceeded = true;
+
             foreach (var chunk in rows.Chunk(RowsPerStatement))
             {
-                await _output.InsertAsync(
-                    BuildInsertSql(chunk.Length),
-                    BuildParameters(chunk, input.CollectionDate));
+                try
+                {
+                    await _output.InsertAsync(
+                        BuildInsertSql(chunk.Length),
+                        BuildParameters(chunk, input.CollectionDate));
+                }
+                catch (Exception ex)
+                {
+                    // Not rethrown: this activity runs under Task.WhenAll
+                    // alongside the other package collectors, and an
+                    // unhandled exception here would fail the whole workflow
+                    // and skip everything after it -- Docker Hub, Datadog,
+                    // Discord, Diagrid, GitHub and all three Scarf pixel
+                    // collectors. The workflow state store is in-memory, so
+                    // such a run could not be resumed.
+                    Console.WriteLine(
+                        $"Failed to store Java package data for week " +
+                        $"{week.WeekStart:yyyy-MM-dd}: {ex.Message}");
+                    allSucceeded = false;
+                }
             }
 
-            return true;
+            return allSucceeded;
         }
     }
 

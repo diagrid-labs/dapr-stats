@@ -55,7 +55,6 @@ CREATE TABLE java_dapr (
       UNIQUE (week_start, package_name, package_version)
 );
 
-
 CREATE TABLE discord_dapr (
     id SERIAL PRIMARY KEY,
     collection_date TIMESTAMP NOT NULL,
