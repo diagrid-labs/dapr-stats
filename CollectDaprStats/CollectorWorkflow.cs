@@ -32,6 +32,20 @@ namespace DaprStats
                 packageLoops.Add(CollectPythonPackagesAsync(context, input));
             }
 
+            // One Scarf request covers all eighteen JVM packages, so this is a
+            // plain activity call rather than a Get -> Check -> Sleep loop. It
+            // joins packageLoops only to run concurrently with them.
+            // `?.` because payloads written before this field existed omit it.
+            if (input.JavaPackageNames?.Length > 0)
+            {
+                packageLoops.Add(context.CallActivityAsync(
+                    nameof(GetJavaPackageData),
+                    new JavaPackageInput(
+                        input.JavaPackageNames,
+                        input.CollectionDate,
+                        input.SkipStorage)));
+            }
+
             if (packageLoops.Count > 0)
             {
                 await Task.WhenAll(packageLoops);
@@ -277,6 +291,7 @@ namespace DaprStats
         string[] NuGetPackageNames,
         string[] NpmPackageNames,
         string[] PythonPackageNames,
+        string[] JavaPackageNames,
         string[] DockerHubImages,
         bool CollectDiscordData,
         bool CollectGitHubData,

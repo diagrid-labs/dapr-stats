@@ -9,25 +9,16 @@ on:
   workflow_dispatch:
     # NOTE: workflow_dispatch allows at most 10 inputs.
     #
-    # The package lists take `all` / `none` / an explicit list rather than being
-    # prefilled with the default list. Clearing a text input does NOT submit an
-    # empty value: GitHub substitutes the input's default, so an emptied field is
-    # indistinguishable from an omitted one and silently collected everything.
-    # `none` is a value GitHub cannot override, so that is how a list is skipped.
+    # The package lists take `all` / `none` / an explicit `<eco>:<list>` group
+    # rather than being prefilled with the default list. Clearing a text input
+    # does NOT submit an empty value: GitHub substitutes the input's default,
+    # so an emptied field is indistinguishable from an omitted one and silently
+    # collected everything. `none` is a value GitHub cannot override, so that
+    # is how a list -- or every list -- is skipped.
     # The lists themselves live in the DEFAULT_* env values below, once.
     inputs:
-      nuget_packages:
-        description: 'NuGet: all | none | comma-separated names (all = Dapr.Client, Dapr.Workflow, Dapr.AspNetCore, Dapr.Extensions.Configuration, Dapr.Actors, Dapr.Messaging, Dapr.Jobs, CommunityToolkit.Aspire.Hosting.Dapr, Diagrid.AI.Microsoft.AgentFramework)'
-        required: false
-        type: string
-        default: 'all'
-      npm_packages:
-        description: 'npm: all | none | comma-separated names (all = @dapr/dapr)'
-        required: false
-        type: string
-        default: 'all'
-      python_packages:
-        description: 'PyPI: all | none | comma-separated names (all = dapr, dapr-agents, dapr-ext-workflow, diagrid)'
+      packages:
+        description: 'Packages: all | none | <eco>:<list> groups separated by ; (eco = nuget, npm, python, java). Naming any group skips every ecosystem you do not name. Example: nuget:Dapr.Client,Dapr.Jobs;java:all'
         required: false
         type: string
         default: 'all'
@@ -87,6 +78,7 @@ env:
   DEFAULT_NUGET_PACKAGES: 'Dapr.Client,Dapr.Workflow,Dapr.AspNetCore,Dapr.Extensions.Configuration,Dapr.Actors,Dapr.Messaging,Dapr.Jobs,CommunityToolkit.Aspire.Hosting.Dapr,Diagrid.AI.Microsoft.AgentFramework'
   DEFAULT_NPM_PACKAGES: '@dapr/dapr'
   DEFAULT_PYTHON_PACKAGES: 'dapr,dapr-agents,dapr-ext-workflow,diagrid'
+  DEFAULT_JAVA_PACKAGES: 'io.dapr*'
 
   # Not exposed as dispatch inputs (10-input cap); switched on and off by the
   # collect_dockerhub and collect_datadog checkboxes and by the collect_scarf
@@ -153,9 +145,7 @@ jobs:
         id: start-workflow
         env:
           # Empty on scheduled runs; the script then falls back to the defaults.
-          IN_NUGET_PACKAGES: ${{ inputs.nuget_packages }}
-          IN_NPM_PACKAGES: ${{ inputs.npm_packages }}
-          IN_PYTHON_PACKAGES: ${{ inputs.python_packages }}
+          IN_PACKAGES: ${{ inputs.packages }}
           IN_COLLECT_DOCKERHUB: ${{ inputs.collect_dockerhub }}
           IN_COLLECT_DATADOG: ${{ inputs.collect_datadog }}
           IN_COLLECT_SCARF: ${{ inputs.collect_scarf }}
@@ -177,16 +167,135 @@ jobs:
             fi
           }
 
-          # Package lists. Text inputs cannot use the same trick: clearing a
-          # field makes GitHub substitute the input's default, so an empty value
-          # can never mean "skip". `none` is explicit and cannot be overridden.
-          #   $1 = submitted value, $2 = the standard list for this ecosystem
-          resolve_list() {
-            case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
-              ''|all) printf '%s' "$2" ;;
-              none)   printf '%s' '' ;;
-              *)      printf '%s' "$1" ;;
+          # The `packages` input: `all` | `none` | `<eco>:<list>` groups joined
+          # by `;`. A text input cannot use the boolean trick -- clearing a
+          # field makes GitHub substitute the default, so an emptied field is
+          # indistinguishable from an omitted one. `none` is the only value
+          # GitHub cannot override, so that is how a list is skipped.
+          #
+          # Naming ANY group skips every ecosystem not named. A group string is
+          # written to re-run something specific; quietly collecting four other
+          # ecosystems alongside it is the failure that made `none` a keyword.
+          #   $1 = ecosystem key (lowercase), $2 = that ecosystem's default list
+          resolve_group() {
+            local key="$1" default="$2"
+            local spec keyword group gkey glist
+            spec="$(printf '%s' "${IN_PACKAGES:-}" | tr -d '[:space:]')"
+            keyword="$(printf '%s' "$spec" | tr '[:upper:]' '[:lower:]')"
+
+            case "$keyword" in
+              ''|all) printf '%s' "$default"; return ;;
+              none)   printf '%s' ''; return ;;
             esac
+
+            # Globbing is off for the word-split below: DEFAULT_JAVA_PACKAGES
+            # is `io.dapr*`, and an unquoted `*` in $spec must stay the
+            # literal character it is, not expand to a filename from the
+            # working directory. Every path out of this loop restores it
+            # before returning, since resolve_group's caller relies on the
+            # option being back to its normal state.
+            set -f
+            local IFS=';'
+            for group in $spec; do
+              gkey="$(printf '%s' "${group%%:*}" | tr '[:upper:]' '[:lower:]')"
+              [ "$gkey" = "$key" ] || continue
+
+              glist="${group#*:}"
+              case "$(printf '%s' "$glist" | tr '[:upper:]' '[:lower:]')" in
+                all)  printf '%s' "$default" ;;
+                none) printf '%s' '' ;;
+                # Package names keep their original case: NuGet ids are
+                # case-sensitive.
+                *)    printf '%s' "$glist" ;;
+              esac
+              set +f
+              return
+            done
+
+            set +f
+            printf '%s' ''
+          }
+
+          # Validates the whole `packages` spec once, before resolve_group runs
+          # once per ecosystem and would otherwise repeat the same complaint
+          # four times. resolve_group's own parsing is deliberately permissive
+          # (it has to accept `all`/`none` in any case and bare package
+          # lists), which means a malformed group is otherwise silently
+          # misread rather than rejected:
+          #   - a bare token with no ':' (e.g. `nuget` instead of `nuget:all`)
+          #     makes both `${group%%:*}` and `${group#*:}` yield the whole
+          #     token, so if it happens to equal the ecosystem key being
+          #     resolved, that ecosystem silently "collects" a package
+          #     literally named after the key instead of a real list;
+          #   - a typoed ecosystem key (e.g. `jva:all`) matches no ecosystem,
+          #     so every ecosystem silently resolves to "collect nothing" --
+          #     a run that reports success but stores no package data at all.
+          # This file has already shipped a silent wrong-collection bug twice
+          # (see AGENTS.md); a plausible typo must fail loudly, not quietly.
+          validate_packages_spec() {
+            local spec keyword group gkey glist matched
+            spec="$(printf '%s' "${IN_PACKAGES:-}" | tr -d '[:space:]')"
+            keyword="$(printf '%s' "$spec" | tr '[:upper:]' '[:lower:]')"
+
+            # Empty (scheduled runs), `all` and `none` need no further checks.
+            case "$keyword" in
+              ''|all|none) return 0 ;;
+            esac
+
+            matched=0
+            # Globbing is off for the word-split below: DEFAULT_JAVA_PACKAGES
+            # is `io.dapr*`, and an unquoted `*` in $spec must stay the
+            # literal character it is, not expand to a filename from the
+            # working directory. This function is called directly rather
+            # than through a subshell, so every path out of the loop below
+            # (including the error exits, harmless since exit ends the whole
+            # step anyway) restores it before leaving.
+            set -f
+            local IFS=';'
+            for group in $spec; do
+              # Leading/trailing/doubled ';' produce empty tokens -- harmless.
+              [ -z "$group" ] && continue
+              matched=1
+
+              case "$group" in
+                *:*) ;;
+                *)
+                  set +f
+                  echo "::error::packages: '$group' is missing ':' -- expected <eco>:<list> (eco = nuget, npm, python, java)" >&2
+                  exit 1
+                  ;;
+              esac
+
+              gkey="$(printf '%s' "${group%%:*}" | tr '[:upper:]' '[:lower:]')"
+              glist="${group#*:}"
+
+              case "$gkey" in
+                nuget|npm|python|java) ;;
+                *)
+                  set +f
+                  echo "::error::packages: '$group' names an unrecognised ecosystem '$gkey' -- expected one of nuget, npm, python, java" >&2
+                  exit 1
+                  ;;
+              esac
+
+              if [ -z "$glist" ]; then
+                set +f
+                echo "::error::packages: '$group' has no value after ':' -- expected all, none, or a comma-separated package list" >&2
+                exit 1
+              fi
+            done
+            set +f
+
+            # Every token was empty -- e.g. ';;;', ';', '; ;'. Each was
+            # skipped by the guard above, so nothing was ever rejected, and
+            # every ecosystem would resolve to empty and the job would report
+            # success having collected nothing. npm and PyPI only serve "last
+            # week", so that silence is permanent data loss, not something a
+            # later run repairs.
+            if [ "$matched" -eq 0 ]; then
+              echo "::error::packages: '$spec' names no ecosystem group -- expected all, none, or <eco>:<list> groups separated by ';'" >&2
+              exit 1
+            fi
           }
 
           norm_bool() {
@@ -216,9 +325,12 @@ jobs:
               | map(select(length > 0))'
           }
 
-          NUGET_CSV=$(resolve_list "$IN_NUGET_PACKAGES" "$DEFAULT_NUGET_PACKAGES")
-          NPM_CSV=$(resolve_list "$IN_NPM_PACKAGES" "$DEFAULT_NPM_PACKAGES")
-          PYTHON_CSV=$(resolve_list "$IN_PYTHON_PACKAGES" "$DEFAULT_PYTHON_PACKAGES")
+          validate_packages_spec
+
+          NUGET_CSV=$(resolve_group nuget "$DEFAULT_NUGET_PACKAGES")
+          NPM_CSV=$(resolve_group npm "$DEFAULT_NPM_PACKAGES")
+          PYTHON_CSV=$(resolve_group python "$DEFAULT_PYTHON_PACKAGES")
+          JAVA_CSV=$(resolve_group java "$DEFAULT_JAVA_PACKAGES")
 
           COLLECT_DOCKERHUB=$(norm_bool "$(pick "$IN_COLLECT_DOCKERHUB" true)")
           COLLECT_DATADOG=$(norm_bool "$(pick "$IN_COLLECT_DATADOG" true)")
@@ -277,6 +389,7 @@ jobs:
             --argjson nuget "$(csv_to_json "$NUGET_CSV")" \
             --argjson npm "$(csv_to_json "$NPM_CSV")" \
             --argjson python "$(csv_to_json "$PYTHON_CSV")" \
+            --argjson java "$(csv_to_json "$JAVA_CSV")" \
             --argjson dockerHub "$(csv_to_json "$DOCKERHUB_CSV")" \
             --argjson dataDog "$(csv_to_json "$DATADOG_CSV")" \
             --argjson dataDogIdentified "$(csv_to_json "$DATADOG_ID_CSV")" \
@@ -292,6 +405,7 @@ jobs:
               NuGetPackageNames: $nuget,
               NpmPackageNames: $npm,
               PythonPackageNames: $python,
+              JavaPackageNames: $java,
               CollectDiscordData: $discord,
               CollectGitHubData: $github,
               CollectDiagridDashboardData: $diagrid,

@@ -8,6 +8,7 @@ At the moment the data sources include:
 - NuGet package downloads for `Dapr.Client`, `Dapr.Workflow`, `Dapr.AspNetCore`, `Dapr.Extensions.Configuration`, `Dapr.Actors`, `Dapr.Messaging`, `Dapr.Jobs`, `CommunityToolkit.Aspire.Hosting.Dapr` and `Diagrid.AI.Microsoft.AgentFramework`
 - Npm package downloads for `@dapr/dapr`
 - Python package downloads for `dapr`, `dapr-agents`, `dapr-ext-workflow` and `diagrid`
+- Java package downloads for all 18 `io.dapr` and `io.dapr.spring` JVM packages, per version, via Scarf. Scarf ingests two to three days late, so each run collects the week *before* last rather than the week that just ended.
 - Docker Hub pull counts for `daprio/daprd`, `daprio/scheduler`, `daprio/operator`, `daprio/injector`, `daprio/sentry` and `daprio/placement`
 - GitHub data for all repositories under the dapr org:
   - Commits
@@ -67,9 +68,7 @@ The [Run CollectorWorkflow](.github/workflows/run-workflow.yaml) workflow runs o
 
 | Input | Type | Default | Effect |
 |---|---|---|---|
-| `nuget_packages` | `all` / `none` / list | `all` | NuGet downloads: the nine standard packages, nothing, or the names you give |
-| `npm_packages` | `all` / `none` / list | `all` | npm downloads: `@dapr/dapr`, nothing, or the names you give |
-| `python_packages` | `all` / `none` / list | `all` | PyPI downloads: the four standard packages, nothing, or the names you give |
+| `packages` | `all` / `none` / `<eco>:<list>` groups | `all` | Package downloads. `all` collects NuGet, npm, PyPI and Java at their standard lists; `none` skips them all. Groups joined by `;` collect **only** the ecosystems named — `nuget:Dapr.Client;java:all` collects one NuGet package and all Java, and skips npm and PyPI entirely. Ecosystem keys: `nuget`, `npm`, `python`, `java`. |
 | `collect_dockerhub` | checkbox | on | Docker Hub pulls for the `daprio/*` images |
 | `collect_datadog` | checkbox | on | Datadog RUM views and users, plus `conductor-ui` authenticated sessions and identified users |
 | `collect_scarf` | `all` / `none` / `dapr` / `diagrid` | `all` | Which Scarf accounts to collect. `dapr` is building block page views and company visits; `diagrid` is page views per company for `diagrid.io` and `docs.diagrid.io` |
@@ -82,7 +81,7 @@ A few things worth knowing:
 
 - **Type `none` to skip an ecosystem — do not clear the field.** Clearing a text input does not submit an empty value: GitHub substitutes the input's default, so an emptied field is indistinguishable from an omitted one and collects everything. `none` is a value GitHub cannot override. Entries in an explicit list may be padded with spaces; they are trimmed, and `all` / `none` are case-insensitive.
 - **Re-running is safe, and is how you repair a bad run.** Every source deduplicates per ISO week, so collecting twice on the same day, or twice in the same week, updates the stored numbers rather than duplicating them. A run that half-failed — GitHub throttled some repos, pypistats rate-limited a package — is fixed by simply running it again. This matters because GitHub delays scheduled runs: this workflow's have been late by two hours, by nineteen, and once by eight days, and a delayed run that lands after a manual one used to double every row it wrote.
-- **Unchecking a box is reliable**, because an unchecked box submits a real `false`. A `choice` input such as `collect_scarf` is equally safe, since it always submits one of its declared options. This is why the other sources are checkboxes and a choice rather than text fields: `workflow_dispatch` allows at most 10 inputs, so the Docker Hub images, Datadog RUM services and Scarf pixel IDs live in the `FIXED_*` variables in the workflow's `env` block and the toggles switch those lists on and off. Change the values there when an image or pixel is added.
+- **Unchecking a box is reliable**, because an unchecked box submits a real `false`. A `choice` input such as `collect_scarf` is equally safe, since it always submits one of its declared options. This is why the other sources are checkboxes and a choice rather than text fields: `workflow_dispatch` limits inputs to 10, so the Docker Hub images, Datadog RUM services and Scarf pixel IDs live in the `FIXED_*` variables in the workflow's `env` block and the toggles switch those lists on and off. Change the values there when an image or pixel is added.
 - **`collect_scarf` selects an account, not just on/off.** `dapr` collects the building block and company-visit tables; `diagrid` collects page views for `diagrid.io` and `docs.diagrid.io`. Because each account's writes rewrite three ISO weeks, being able to re-run one without touching the other matters. Making it a `choice` cost no extra input; a second checkbox would have exceeded the cap.
 - **The package lists are defined once**, in the `DEFAULT_*` env values. Both a scheduled run and a manual run left at `all` read them from there, so there is nothing to keep in sync.
 - The resolved workflow input is printed to the run log and to the run summary, so you can confirm what a manual run actually collected.

@@ -1,0 +1,27 @@
+-- Adds java_dapr: weekly per-version JVM package downloads from Scarf.
+--
+-- Replaces the manual Sonatype CSV import described in java-import.md, which
+-- last ran for April 2025 and only ever covered `dapr-sdk`. java_dapr_sdk is
+-- left untouched as the frozen archive of that import.
+--
+-- week_start is "the ISO week this data describes", the sense scarf_* and
+-- datadog_rum* use. It is deliberately NOT called collection_week, which in
+-- the seven deduplicated tables means "the week the run happened in". Here the
+-- two differ by two weeks: Scarf ingests two to three days late, so a Monday
+-- run collects the week before last, not the week that ended the day before.
+--
+-- The unique constraint keys on week_start rather than the run's week so that
+-- a delayed run cannot write a second copy of a week it already holds.
+
+CREATE TABLE java_dapr (
+    id SERIAL PRIMARY KEY,
+    package_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    package_version VARCHAR(100) NOT NULL,
+    download_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT,
+    week_start DATE NOT NULL,
+    unique_origins BIGINT,
+    CONSTRAINT java_dapr_week_unique
+      UNIQUE (week_start, package_name, package_version)
+);

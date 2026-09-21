@@ -14,7 +14,7 @@ A .NET 10 web service that uses Dapr Workflow to collect Dapr SDK and community 
 | Test | `dotnet test dapr-stats.sln` |
 | Run locally | `dapr run -f .`, then send a request from [local-tests.http](local-tests.http) |
 
-The test suite is 207 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `UpsertBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of any activity's `RunAsync` or of the workflow itself, but pure helpers extracted from activities — such as `GetScarfPageViews.Aggregate` and `GetScarfPageViews.MissingSites` — are covered.
+The test suite is 217 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `UpsertBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of any activity's `RunAsync` or of the workflow itself, but pure helpers extracted from activities — such as `GetScarfPageViews.Aggregate`, `GetScarfPageViews.MissingSites`, `GetJavaPackageData.BuildInsertSql` and `GetJavaPackageData.BuildParameters` — are covered.
 
 CI is two workflows: [build.yml](.github/workflows/build.yml) restores, builds and tests on every push and PR to `main`, and [run-workflow.yaml](.github/workflows/run-workflow.yaml) does the weekly collection.
 
@@ -49,7 +49,7 @@ Three Dapr components carry the infrastructure:
 2. Guard every `InsertAsync` with `if (!input.SkipStorage)`. This is what makes dry runs safe.
 3. Add the list or flag to `CollectorWorkflowInput` in `CollectorWorkflow.cs` and guard the call site — lists with `.Length > 0`, flags with the bool. An empty list must mean "skip this source"; the GitHub Actions checkboxes rely on it. List entries can encode compound data (e.g. `service|env` pairs split on `|` in the workflow like `DockerHubImages` splits on `/`); guard with `?.Length > 0` when a payload field may be omitted entirely.
 4. Keep the workflow class deterministic: no `DateTime.Now`, no `Guid.NewGuid()`, no HTTP calls in `RunAsync`. `CollectionDate` is passed in from outside for exactly this reason, and all I/O belongs in activities. Use `context.CreateTimer`, never `Task.Delay`.
-5. Update all four of: `local-tests.http`, the `FIXED_*`/`DEFAULT_*` env values and inputs in `run-workflow.yaml`, the README data-source list, and `postgres/postgres_schema.psql`.
+5. Update all four of: `local-tests.http`, the `FIXED_*`/`DEFAULT_*` env values and inputs in `run-workflow.yaml`, the README data-source list, and `postgres/postgres_schema.psql`. A new *package* ecosystem needs no new dispatch input — add a `DEFAULT_<ECO>_PACKAGES` env value and one `resolve_group` call, since the single `packages` input already carries every ecosystem.
 
 ## Gotchas
 
@@ -125,10 +125,27 @@ These are all verified in the current code, not guesses:
   both daprd and the app have crashed, so a `kill -0 $DAPR_PID` readiness check
   passes on a dead stack. The CI step polls `/v1.0/healthz` on a deadline
   instead, and bails early if the dapr process is gone.
-- **`workflow_dispatch` allows at most 10 inputs.** `run-workflow.yaml` is exactly at the cap, which is why the Docker Hub images, Datadog services and Scarf pixel IDs are `FIXED_*` env values behind a toggle rather than editable fields. `collect_scarf` is a `choice` (`all`/`none`/`dapr`/`diagrid`) rather than a checkbox, so one Scarf account can be collected without rewriting the other's three weeks — that cost no extra input, which a second checkbox would have.
+- **`workflow_dispatch` allows at most 10 inputs.** `run-workflow.yaml` now uses 8 of them, freed by merging the three package-ecosystem inputs into one `packages` input; the cap remains the binding constraint on future additions. The Docker Hub images, Datadog services and Scarf pixel IDs are `FIXED_*` env values behind a toggle rather than editable fields to stay under the cap. `collect_scarf` is a `choice` (`all`/`none`/`dapr`/`diagrid`) rather than a checkbox, so one Scarf account can be collected without rewriting the other's three weeks — that cost no extra input, which a second checkbox would have. A new *package* ecosystem no longer needs a dispatch input at all — it reuses the `packages` input.
 - **An emptied text input comes back as its default.** GitHub substitutes the `default:` when a `workflow_dispatch` text input is submitted empty, so a cleared field cannot be told apart from an omitted one. This once caused a manual run to collect every package after the fields had deliberately been emptied, duplicating a day of package data. The package inputs therefore take `all` / `none` / an explicit list, since `none` is a value GitHub cannot override. Boolean inputs are not affected: an unchecked box submits a real `false`.
 - **GitHub delays scheduled runs, sometimes by days.** Measured on this workflow: two hours, nineteen hours, and once eight days between the cron firing and the run starting. A delayed run looks skipped, someone dispatches manually, and the delayed run then lands anyway - which is what duplicated a week of data on 2026-09-07, after the input-validation fix above had already been made. This is why deduplication is enforced by database constraints rather than by runs not overlapping.
 - **Input defaults do not apply to scheduled runs at all.** GitHub leaves `inputs.*` empty for `schedule`, which the `all` keyword handles: empty resolves the same way as `all`, to the `DEFAULT_*` env value.
+- **Scarf ingests two to three days late.** Probed 2026-09-15, its newest
+  event anywhere was Saturday the 12th. Every complete week's
+  `max(last_seen)` lands on its Sunday; the most recent week's did not. The
+  raw effect is a ~25% shortfall that looks exactly like a real decline —
+  `dapr-sdk` read 20,413 for a week whose true value was nearer 28,000. This
+  is why `GetJavaPackageData` collects the week *before* last,
+  `CompleteWeeksBefore(date, 2)[0]`, and why `java_dapr.week_start` sits two
+  weeks behind `collection_date` rather than one.
+- **`package_id=all` is not JVM-only on the Scarf export.** It pulls in the
+  `Dapr CLI` artifact. `query=io.dapr*` returns exactly the eighteen JVM
+  packages and is what the collector sends; it also picks up a newly
+  registered package with no code change.
+- **`ScarfAggregationResponse` has two entry points and they are not
+  interchangeable.** `Parse` drops rows with a null `company_name`, which is
+  every row of a `by-version` breakdown; `ParsePackageVersions` is the one to
+  use for packages. A test asserts `Parse` still drops them, so collapsing the
+  two fails the build.
 
 ## Database
 

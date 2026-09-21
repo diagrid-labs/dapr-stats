@@ -21,7 +21,8 @@ namespace DaprStats
         DateOnly To,             // Exclusive, verified 2026-09-01.
         string? Breakdown,       // "by-company", or null to omit.
         string? BreakdownSet,    // "by-referer,by-company", or null to omit.
-        bool? GroupByArtifact);  // null omits the parameter entirely.
+        bool? GroupByArtifact,   // null omits the parameter entirely.
+        string? Query = null);   // package-name DSL; excludes PixelIds.
 
     public sealed class ScarfExportClient
     {
@@ -44,6 +45,15 @@ namespace DaprStats
         /// </summary>
         internal static string BuildUrl(ScarfExportRequest request)
         {
+            if (request.Query is not null && request.PixelIds.Length > 0)
+            {
+                throw new ArgumentException(
+                    "Scarf rejects the package-name query together with a " +
+                    "tracking_pixel_id or package_id selector. Set one or the " +
+                    "other, not both.",
+                    nameof(request));
+            }
+
             var url = new StringBuilder("https://api.scarf.sh/v3/insights/");
 
             // Never case-normalised: /v3/* returns 404
@@ -58,6 +68,15 @@ namespace DaprStats
             foreach (var pixelId in request.PixelIds)
             {
                 url.Append("&tracking_pixel_id=").Append(Uri.EscapeDataString(pixelId));
+            }
+
+            if (request.Query is { } query)
+            {
+                // Appended raw, like the comma in breakdown_set below: this is
+                // the exact form verified against the live API on 2026-09-15.
+                // The DSL's metacharacters are `*`, `{`, `}` and `,`, none of
+                // which survive Uri.EscapeDataString intact.
+                url.Append("&query=").Append(query);
             }
 
             url.Append("&rollup=weekly");
@@ -89,7 +108,14 @@ namespace DaprStats
         }
 
         public async Task<IReadOnlyList<ScarfAggregationResponse.Row>> FetchAsync(
-            ScarfExportRequest request)
+            ScarfExportRequest request) =>
+            ScarfAggregationResponse.Parse(await SendAsync(request));
+
+        public async Task<IReadOnlyList<ScarfAggregationResponse.PackageRow>>
+            FetchPackageVersionsAsync(ScarfExportRequest request) =>
+            ScarfAggregationResponse.ParsePackageVersions(await SendAsync(request));
+
+        private async Task<byte[]> SendAsync(ScarfExportRequest request)
         {
             var secrets = await _daprClient.GetSecretAsync(
                 SecretStore, request.ApiTokenSecret);
@@ -109,7 +135,7 @@ namespace DaprStats
                     Encoding.UTF8.GetString(payload));
             }
 
-            return ScarfAggregationResponse.Parse(payload);
+            return payload;
         }
 
         private static string Iso(DateOnly date) =>

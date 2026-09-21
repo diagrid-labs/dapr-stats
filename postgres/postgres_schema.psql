@@ -38,6 +38,22 @@ CREATE TABLE java_dapr_sdk (
     collected_over_number_of_days SMALLINT
 );
 
+-- Weekly per-version JVM downloads from Scarf, collected by GetJavaPackageData.
+-- week_start is the ISO week the data describes; because Scarf ingests two to
+-- three days late, it is two weeks behind collection_date, not one.
+-- java_dapr_sdk above is the frozen Sonatype archive and is no longer written.
+CREATE TABLE java_dapr (
+    id SERIAL PRIMARY KEY,
+    package_name VARCHAR(255) NOT NULL,
+    collection_date TIMESTAMP NOT NULL,
+    package_version VARCHAR(100) NOT NULL,
+    download_count BIGINT NOT NULL,
+    collected_over_number_of_days SMALLINT,
+    week_start DATE NOT NULL,
+    unique_origins BIGINT,
+    CONSTRAINT java_dapr_week_unique
+      UNIQUE (week_start, package_name, package_version)
+);
 
 CREATE TABLE discord_dapr (
     id SERIAL PRIMARY KEY,
