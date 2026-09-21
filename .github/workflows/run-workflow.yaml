@@ -93,7 +93,11 @@ env:
 jobs:
   run-workflow:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Must stay ahead of the poll deadline in "Wait for Workflow Completion",
+    # with enough slack for setup before it and Cleanup/log dump after it. This
+    # timeout cancels rather than fails, taking the if: always() steps and the
+    # logs with it, so the poll deadline should always be what gives up first.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout Repository
@@ -118,7 +122,15 @@ jobs:
       - name: Start Application with Dapr
         run: |
           set -e
-          dapr run -f . &
+          # Redirect rather than letting daprd write straight to this step's
+          # stdout: the step's log window closes when the step ends, so
+          # everything daprd and the app print during the collection that
+          # follows is lost. On 2026-09-21 the app crashed inside this window
+          # and was diagnosable only by luck; five seconds later it would have
+          # left no trace. The "Dump Dapr and app logs" step reads this file,
+          # and the startup output is echoed back below so it still shows up
+          # here, where it matters most.
+          dapr run -f . > dapr.log 2>&1 &
           DAPR_PID=$!
           echo "dapr_pid=$DAPR_PID" >> $GITHUB_ENV
           echo "Dapr multi-app started in background with PID: $DAPR_PID"
@@ -127,22 +139,40 @@ jobs:
           # checking the PID proves nothing. Poll the sidecar until it actually
           # serves, which also covers a slow Neon cold start behind the postgres
           # binding's initTimeout.
+          #
+          # The deadline is the real backstop here, not the `kill -0` branch:
+          # per the comment above the CLI does not exit when the stack under it
+          # dies, so that branch fires only if the CLI itself is killed.
+          dump_log() {
+            echo "::group::Dapr startup output"
+            cat dapr.log 2>/dev/null || echo "(no dapr.log)"
+            echo "::endgroup::"
+          }
+
           DEADLINE=$((SECONDS + 180))
           until curl -sf -o /dev/null http://localhost:3500/v1.0/healthz; do
             if ! kill -0 $DAPR_PID 2>/dev/null; then
               echo "❌ Dapr process exited before the sidecar became healthy"
+              dump_log
               exit 1
             fi
             if [ $SECONDS -ge $DEADLINE ]; then
               echo "❌ Sidecar did not become healthy within 180s"
+              dump_log
               exit 1
             fi
             sleep 5
           done
           echo "✅ Dapr sidecar and app are healthy"
+          dump_log
 
       - name: Generate Variables and Start CollectorWorkflow
         id: start-workflow
+        # Everything in this step is near-instant apart from one curl that is
+        # itself capped at 60s, so three minutes is pure slack. Without it a
+        # hang here eats the whole 30-minute job budget and the run is
+        # cancelled rather than failed -- no error, no logs, no artifacts.
+        timeout-minutes: 3
         env:
           # Empty on scheduled runs; the script then falls back to the defaults.
           IN_PACKAGES: ${{ inputs.packages }}
@@ -432,9 +462,17 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           # Make POST request to start the workflow
-          RESPONSE=$(curl -s -X POST "http://localhost:3500/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID=$WORKFLOW_ID" \
+          # --max-time is load-bearing. daprd serves its HTTP API before the
+          # app channel exists, so when the app has crashed this POST connects
+          # happily and then blocks forever on a workflow engine with nothing
+          # to schedule onto. Untimed, that burned the entire job budget on
+          # 2026-09-21: 29 minutes of silence, then a cancellation.
+          RESPONSE=$(curl -sS --max-time 60 -X POST "http://localhost:3500/v1.0/workflows/dapr/CollectorWorkflow/start?instanceID=$WORKFLOW_ID" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD")
+            -d "$PAYLOAD") || {
+            echo "❌ Could not reach the workflow start API (curl exit $?)"
+            exit 1
+          }
 
           echo "Response: $RESPONSE"
 
@@ -453,7 +491,7 @@ jobs:
           INSTANCE_ID="${{ steps.start-workflow.outputs.instance_id }}"
           echo "Polling status for instance: $INSTANCE_ID"
 
-          DEADLINE=$((SECONDS + 1500))   # 25 minutes
+          DEADLINE=$((SECONDS + 2400))   # 40 minutes, inside a 45-minute job
           STATUS="UNKNOWN"
 
           while [ $SECONDS -lt $DEADLINE ]; do
@@ -489,3 +527,21 @@ jobs:
           dapr stop --app-id collect-dapr-stats || true
           pkill -f "dapr" || true
           echo "Cleanup complete"
+
+      # After Cleanup, so every process has exited and written its last line.
+      # Dumped into the step log rather than uploaded as an artifact: GitHub
+      # masks registered secrets in step logs but not in artifacts, and this
+      # repository is public.
+      - name: Dump Dapr and app logs
+        if: always()
+        run: |
+          echo "::group::dapr.log"
+          cat dapr.log 2>/dev/null || echo "(no dapr.log)"
+          echo "::endgroup::"
+
+          for f in CollectDaprStats/.dapr/logs/*; do
+            [ -e "$f" ] || continue
+            echo "::group::$f"
+            cat "$f"
+            echo "::endgroup::"
+          done
