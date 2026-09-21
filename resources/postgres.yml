@@ -5,6 +5,10 @@ metadata:
 spec:
   type: bindings.postgresql
   version: v1
+  # Neon archives the branch after a few days idle; the first connection of a
+  # weekly run has to unarchive it and cold-start the compute, which took ~11s
+  # on 2026-09-21 and blew the 5s default, taking daprd down with it.
+  initTimeout: 60s
   metadata:
     - name: connectionString
       secretKeyRef:

@@ -99,6 +99,32 @@ These are all verified in the current code, not guesses:
   it to a plain `bool`.
 - **Every source is now idempotent per ISO week**, by one of two mechanisms. Scarf writes are delete-then-insert per ISO week; the other seven tables carry a `UNIQUE (collection_week, ...)` constraint and their collectors write `insert ... on conflict ... do update set ...`, where `collection_week` is a generated column. Both make re-running a week safe, and any change to either write path needs to preserve that. Delete-then-insert is the right choice for Scarf specifically because its company attribution is retroactive, so a row whose key no longer exists must be removed rather than left behind as a phantom. `GetScarfPageViews` scopes its delete per ISO week *and site* (`week_start` and `site`), not just per week: a site whose pixel has gone quiet across the whole three-week window is left untouched rather than deleted, while a healthy site still gets its normal per-week delete-then-insert, including for a week it genuinely had zero rows.
 - **A full run is slow by design.** The package loops retry up to three times with a five-minute backoff between attempts, so collection can take ~25 minutes. The CI job polls with a 25-minute deadline inside a 30-minute job timeout; anything that lengthens the retry path needs both raised.
+- **Neon archives the branch when it is idle, and the first connection pays for
+  it.** The compute is not merely suspended between weekly runs: after about a
+  day idle Neon runs `timeline_archive` and `tenant_detach`, so the next
+  connection has to `tenant_attach` + `timeline_unarchive` + `start_compute`.
+  Measured on 2026-09-21 that took ~11 seconds against ~1 second for a warm
+  compute. Dapr's component `initTimeout` defaults to 5s, so the `daprstats`
+  binding failed to init ("failed to ping the DB: context deadline exceeded"),
+  daprd exited gracefully, and the run died 35 seconds later as an opaque curl
+  exit 7. `resources/postgres.yml` therefore sets `initTimeout: 60s`. Since the
+  collector runs weekly, every run hits this path — do not lower it. **Never
+  diagnose a repeat by re-running the job:** the failed attempt itself wakes the
+  compute, so a re-run succeeds regardless and hides the problem until the next
+  idle week. Check `neon operations list --project-id spring-pine-41263944` for
+  a `timeline_unarchive` near the failure time instead.
+- **The app must wait for its own sidecar.** daprd starts its HTTP and gRPC API
+  servers only after every component has initialized, so anything the app does
+  before `app.Run()` races it. `Program.cs` fetches `DAPRSTATSGITHUBPAT` at
+  startup and used to die on `SocketException (111): Connection refused` the one
+  time daprd was slow; it now calls `WaitForSidecarAsync` first. That polls
+  `/v1.0/healthz/outbound`, which exists exactly for an app calling its sidecar
+  before the app itself is serving — plain `/v1.0/healthz` waits on the app
+  channel and would deadlock.
+- **`dapr run` outlives the processes it started.** The CLI stays alive when
+  both daprd and the app have crashed, so a `kill -0 $DAPR_PID` readiness check
+  passes on a dead stack. The CI step polls `/v1.0/healthz` on a deadline
+  instead, and bails early if the dapr process is gone.
 - **`workflow_dispatch` allows at most 10 inputs.** `run-workflow.yaml` now uses 8 of them, freed by merging the three package-ecosystem inputs into one `packages` input; the cap remains the binding constraint on future additions. The Docker Hub images, Datadog services and Scarf pixel IDs are `FIXED_*` env values behind a toggle rather than editable fields to stay under the cap. `collect_scarf` is a `choice` (`all`/`none`/`dapr`/`diagrid`) rather than a checkbox, so one Scarf account can be collected without rewriting the other's three weeks — that cost no extra input, which a second checkbox would have. A new *package* ecosystem no longer needs a dispatch input at all — it reuses the `packages` input.
 - **An emptied text input comes back as its default.** GitHub substitutes the `default:` when a `workflow_dispatch` text input is submitted empty, so a cleared field cannot be told apart from an omitted one. This once caused a manual run to collect every package after the fields had deliberately been emptied, duplicating a day of package data. The package inputs therefore take `all` / `none` / an explicit list, since `none` is a value GitHub cannot override. Boolean inputs are not affected: an unchecked box submits a real `false`.
 - **GitHub delays scheduled runs, sometimes by days.** Measured on this workflow: two hours, nineteen hours, and once eight days between the cron firing and the run starting. A delayed run looks skipped, someone dispatches manually, and the delayed run then lands anyway - which is what duplicated a week of data on 2026-09-07, after the input-validation fix above had already been made. This is why deduplication is enforced by database constraints rather than by runs not overlapping.
