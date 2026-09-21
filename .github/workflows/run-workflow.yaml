@@ -93,7 +93,11 @@ env:
 jobs:
   run-workflow:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Must stay ahead of the poll deadline in "Wait for Workflow Completion",
+    # with enough slack for setup before it and Cleanup/log dump after it. This
+    # timeout cancels rather than fails, taking the if: always() steps and the
+    # logs with it, so the poll deadline should always be what gives up first.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout Repository
@@ -487,7 +491,7 @@ jobs:
           INSTANCE_ID="${{ steps.start-workflow.outputs.instance_id }}"
           echo "Polling status for instance: $INSTANCE_ID"
 
-          DEADLINE=$((SECONDS + 1500))   # 25 minutes
+          DEADLINE=$((SECONDS + 2400))   # 40 minutes, inside a 45-minute job
           STATUS="UNKNOWN"
 
           while [ $SECONDS -lt $DEADLINE ]; do
