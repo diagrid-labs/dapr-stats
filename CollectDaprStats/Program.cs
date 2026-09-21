@@ -8,6 +8,13 @@ using Octokit;
 var daprClient = new DaprClientBuilder().Build();
 const string secretStore = "secretstore";
 const string DaprStatsGitHubPATKey = "DAPRSTATSGITHUBPAT";
+
+// The sidecar only serves its APIs once every component has initialized, and the
+// postgres binding waits on a Neon cold start. Without this the first secret call
+// races daprd and the app dies on "Connection refused" before it ever starts.
+using var sidecarWait = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+await daprClient.WaitForSidecarAsync(sidecarWait.Token);
+
 var ghPATDictionary = await daprClient.GetSecretAsync(secretStore, DaprStatsGitHubPATKey);
 
 var builder = WebApplication.CreateBuilder(args);

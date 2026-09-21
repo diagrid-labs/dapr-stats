@@ -131,13 +131,23 @@ jobs:
           echo "dapr_pid=$DAPR_PID" >> $GITHUB_ENV
           echo "Dapr multi-app started in background with PID: $DAPR_PID"
 
-          # Wait a few seconds and verify the process is still running
-          sleep 15
-          if ! kill -0 $DAPR_PID 2>/dev/null; then
-            echo "❌ Dapr process failed to start or crashed immediately"
-            exit 1
-          fi
-          echo "✅ Dapr process is running"
+          # `dapr run` stays alive even when daprd and the app have both died, so
+          # checking the PID proves nothing. Poll the sidecar until it actually
+          # serves, which also covers a slow Neon cold start behind the postgres
+          # binding's initTimeout.
+          DEADLINE=$((SECONDS + 180))
+          until curl -sf -o /dev/null http://localhost:3500/v1.0/healthz; do
+            if ! kill -0 $DAPR_PID 2>/dev/null; then
+              echo "❌ Dapr process exited before the sidecar became healthy"
+              exit 1
+            fi
+            if [ $SECONDS -ge $DEADLINE ]; then
+              echo "❌ Sidecar did not become healthy within 180s"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "✅ Dapr sidecar and app are healthy"
 
       - name: Generate Variables and Start CollectorWorkflow
         id: start-workflow
