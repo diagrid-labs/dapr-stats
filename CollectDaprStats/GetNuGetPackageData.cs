@@ -1,16 +1,15 @@
-using NuGet.Common;
-using NuGet.Protocol;
-using NuGet.Protocol.Core.Types;
 using Dapr.Workflow;
 
 namespace DaprStats
 {
     public class GetNuGetPackageData : WorkflowActivity<NuGetPackageInput, bool>
     {
+        private readonly HttpClient _httpClient;
         private readonly PostgresOutput _output;
 
-        public GetNuGetPackageData(PostgresOutput output)
+        public GetNuGetPackageData(IHttpClientFactory httpClientFactory, PostgresOutput output)
         {
+            _httpClient = httpClientFactory.CreateClient();
             _output = output;
         }
 
@@ -29,27 +28,29 @@ namespace DaprStats
 
         public override async Task<bool> RunAsync(WorkflowActivityContext context, NuGetPackageInput input)
         {
-            var repository = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
-            var resource = await repository.GetResourceAsync<PackageSearchResource>();
-            
-            var searchResult = await resource.SearchAsync(
-                input.PackageName,
-                new SearchFilter(false),
-                0,
-                1,
-                NullLogger.Instance,
-                CancellationToken.None);
-            var daprClientPackage = searchResult.FirstOrDefault();
-            var daprClientVersions = await daprClientPackage.GetVersionsAsync();
+            var serviceIndex = await _httpClient.GetByteArrayAsync(NuGetSearch.ServiceIndexUrl);
+            var endpoints = NuGetSearch.SearchEndpoints(serviceIndex);
 
-            foreach (var version in daprClientVersions)
+            var results = new List<NuGetSearch.SearchResult?>();
+            foreach (var endpoint in endpoints)
+            {
+                var result = await SearchAsync(endpoint, input.PackageName);
+                Console.WriteLine($"NuGet search {endpoint.Host}: {input.PackageName} = {result?.TotalDownloads.ToString() ?? "no result"}");
+                results.Add(result);
+            }
+
+            var package = NuGetSearch.PickFreshest(results)
+                ?? throw new InvalidOperationException(
+                    $"No NuGet search endpoint returned {input.PackageName} ({string.Join(", ", endpoints.Select(e => e.Host))})");
+
+            foreach (var version in package.Versions)
             {
                 var nugetPackageVersionData = new NuGetPackageVersionData
                 (
                     CollectionDate: DateTime.UtcNow,
-                    PackageName: daprClientPackage.Identity.Id,
-                    PackageVersion: version.Version.ToFullString(),
-                    Downloads: version.DownloadCount
+                    PackageName: package.PackageId,
+                    PackageVersion: version.Version,
+                    Downloads: version.Downloads
                 );
                 Console.WriteLine($"NuGet Package: {nugetPackageVersionData.PackageName}, Version: {nugetPackageVersionData.PackageVersion}, Downloads: {nugetPackageVersionData.Downloads}");
                 
@@ -61,6 +62,27 @@ namespace DaprStats
             }
 
             return true;
+        }
+
+        // One failing host must not lose the package when another can answer,
+        // so a failure here is logged and treated as "no result".
+        private async Task<NuGetSearch.SearchResult?> SearchAsync(Uri endpoint, string packageName)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync(NuGetSearch.BuildQueryUri(endpoint, packageName));
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"NuGet search {endpoint.Host} returned {(int)response.StatusCode} for {packageName}");
+                    return null;
+                }
+                return NuGetSearch.ParseSearchResult(await response.Content.ReadAsByteArrayAsync());
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                Console.WriteLine($"NuGet search {endpoint.Host} failed for {packageName}: {ex.Message}");
+                return null;
+            }
         }
     }
 
