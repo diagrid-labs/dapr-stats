@@ -597,9 +597,40 @@ SELECT
     ROUND(download_count::DECIMAL / collected_over_number_of_days * 7) AS avg_weekly_downloads
 FROM 
     java_dapr_sdk
-ORDER BY 
+ORDER BY
     collection_date,
     package_version
+
+---
+
+-- One row per ISO week of Scarf JVM downloads, all packages and versions
+-- summed. The two -parent POMs are excluded: they are build metadata pulled
+-- in by the real artifacts, so counting them would double-count downloads.
+-- week_start is the week described, two weeks behind collection_date.
+CREATE OR REPLACE VIEW java_dapr_weekly_view AS
+WITH newest AS (
+    SELECT DISTINCT ON (week_start, package_name, package_version)
+        week_start,
+        package_name,
+        package_version,
+        download_count,
+        unique_origins,
+        collected_over_number_of_days,
+        collection_date
+    FROM java_dapr
+    WHERE package_name NOT IN ('io.dapr/dapr-sdk-parent', 'io.dapr.spring/dapr-spring-parent')
+    ORDER BY week_start, package_name, package_version, collection_date DESC
+)
+SELECT
+    week_start,
+    SUM(download_count)::bigint AS weekly_downloads,
+    SUM(unique_origins)::bigint AS weekly_origins,
+    COUNT(DISTINCT package_name)::integer AS packages,
+    MIN(collected_over_number_of_days)::integer AS min_days,
+    MAX(collected_over_number_of_days)::integer AS max_days,
+    MAX(collection_date) AS last_collected
+FROM newest
+GROUP BY week_start;
 
 ---
 
