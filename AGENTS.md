@@ -14,7 +14,7 @@ A .NET 10 web service that uses Dapr Workflow to collect Dapr SDK and community 
 | Test | `dotnet test dapr-stats.sln` |
 | Run locally | `dapr run -f .`, then send a request from [local-tests.http](local-tests.http) |
 
-The test suite is 217 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `UpsertBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of any activity's `RunAsync` or of the workflow itself, but pure helpers extracted from activities — such as `GetScarfPageViews.Aggregate`, `GetScarfPageViews.MissingSites`, `GetJavaPackageData.BuildInsertSql` and `GetJavaPackageData.BuildParameters` — are covered.
+The test suite is 224 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `UpsertBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of any activity's `RunAsync` or of the workflow itself, but pure helpers extracted from activities — such as `GetScarfPageViews.Aggregate`, `GetScarfPageViews.MissingSites`, `GetJavaPackageData.BuildInsertSql` and `GetJavaPackageData.BuildParameters` and `NuGetSearch` — are covered.
 
 CI is two workflows: [build.yml](.github/workflows/build.yml) restores, builds and tests on every push and PR to `main`, and [run-workflow.yaml](.github/workflows/run-workflow.yaml) does the weekly collection.
 
@@ -83,6 +83,15 @@ These are all verified in the current code, not guesses:
   `OrgGroupByLimit` (50) rather than the `AttributeGroupByLimit` (5) that
   `emails` and `names` use, because 5 truncates the 8-organisation account under
   the per-parent reading of DataDog's 10,000-groups cap.
+- **NuGet's search hosts drift apart, so the collector asks all of them.**
+  The service index lists `azuresearch-usnc` and `azuresearch-ussc`, and on
+  2026-10-05 `usnc` had stalled: it served the same download counts as four days
+  earlier while `ussc` was ~240k ahead on Dapr.Client alone. The NuGet client SDK
+  always used the first host, so two runs stored identical numbers and the week
+  showed 0 downloads. `GetNuGetPackageData` now queries every search host over
+  plain HTTP and `NuGetSearch.PickFreshest` keeps the result with the most
+  downloads, since counts only grow; a host that fails is skipped. Do not go back
+  to the SDK's single-host search.
 - **`nuget_dapr_client` is a misnomer.** That one table holds all nine NuGet packages, distinguished by the `package_name` column.
 - **`PostgresOuput.cs`** is misspelled on disk; the class inside is `PostgresOutput`.
 - **Scarf's owner slug is case-sensitive, and there are now two accounts.**
