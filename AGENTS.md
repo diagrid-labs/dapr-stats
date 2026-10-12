@@ -14,7 +14,7 @@ A .NET 10 web service that uses Dapr Workflow to collect Dapr SDK and community 
 | Test | `dotnet test dapr-stats.sln` |
 | Run locally | `dapr run -f .`, then send a request from [local-tests.http](local-tests.http) |
 
-The test suite is 224 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `UpsertBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of any activity's `RunAsync` or of the workflow itself, but pure helpers extracted from activities — such as `GetScarfPageViews.Aggregate`, `GetScarfPageViews.MissingSites`, `GetJavaPackageData.BuildInsertSql` and `GetJavaPackageData.BuildParameters` and `NuGetSearch` — are covered.
+The test suite is 233 xUnit tests that run in about 100 ms. They are pure unit tests over parsing and SQL-building helpers (`IsoWeek`, `SqlValuesBuilder`, `UpsertBuilder`, `PackageDataChecker`, `DataDogRumIdentifiedUsers`, the response DTOs) and touch neither the network nor the database, so there is no reason not to run them. There is no test coverage of any activity's `RunAsync` or of the workflow itself, but pure helpers extracted from activities — such as `GetScarfPageViews.Aggregate`, `GetScarfPageViews.MissingSites`, `GetJavaPackageData.BuildInsertSql` and `GetJavaPackageData.BuildParameters` and `NuGetSearch` — are covered.
 
 CI is two workflows: [build.yml](.github/workflows/build.yml) restores, builds and tests on every push and PR to `main`, and [run-workflow.yaml](.github/workflows/run-workflow.yaml) does the weekly collection.
 
@@ -92,6 +92,17 @@ These are all verified in the current code, not guesses:
   plain HTTP and `NuGetSearch.PickFreshest` keeps the result with the most
   downloads, since counts only grow; a host that fails is skipped. Do not go back
   to the SDK's single-host search.
+  That is not enough on its own: on 2026-10-12 *both* hosts still served the
+  exact per-version counts of the week before, while the nuget.org gallery page
+  was ~700k ahead on Dapr.Client. (Compare `sum(versions[].downloads)`, which is
+  what gets stored, not the response's `totalDownloads`, which also counts
+  prerelease versions and is always higher.) So before storing, `NuGetSearch.IsStale` compares the
+  freshest total with the previous collection week's stored total; if it has not
+  grown, the package is not stored, a `NUGET_STALE` line is logged, the workflow's
+  retry loop tries again after the backoff, and the `Check for stale NuGet data`
+  CI step fails the job once the workflow has finished. Other sources are still
+  collected. Re-collect a stale week later in the same ISO week, once search has
+  caught up; the per-week upsert makes that safe.
 - **`nuget_dapr_client` is a misnomer.** That one table holds all nine NuGet packages, distinguished by the `package_name` column.
 - **`PostgresOuput.cs`** is misspelled on disk; the class inside is `PostgresOutput`.
 - **Scarf's owner slug is case-sensitive, and there are now two accounts.**

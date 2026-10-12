@@ -520,6 +520,20 @@ jobs:
             exit 1
           fi
 
+      # GetNuGetPackageData skips a package, rather than failing the workflow,
+      # when even the freshest NuGet search host has not moved past last week's
+      # total - so every other source is still collected. On 2026-10-12 both
+      # hosts served week-old counts. Fail here so it is noticed.
+      - name: Check for stale NuGet data
+        run: |
+          STALE=$(grep -rh "NUGET_STALE" dapr.log CollectDaprStats/.dapr/logs 2>/dev/null \
+            | sed -E 's/.*NUGET_STALE ([^:]+):.*/\1/' | sort -u | paste -sd, - | sed 's/,/, /g')
+          if [ -n "$STALE" ]; then
+            echo "::error::NuGet search served no newer download counts than last week for: $STALE. Not stored; re-collect from another machine."
+            exit 1
+          fi
+          echo "✅ No stale NuGet data"
+
       - name: Cleanup
         if: always()
         run: |

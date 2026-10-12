@@ -41,6 +41,18 @@ namespace DaprStats
             return ParseRows(response.Data.Span);
         }
 
+        /// <summary>Runs a parameterised query and returns the raw JSON rows.</summary>
+        public async Task<byte[]> QueryAsync(string sqlText, object[] sqlParameters)
+        {
+            var request = new BindingRequest(BindingName, QueryOperation);
+            request.Metadata.Add("sql", sqlText);
+            request.Metadata.Add("params", JsonSerializer.Serialize(sqlParameters));
+
+            var response = await _daprClient.InvokeBindingAsync(request);
+
+            return response.Data.ToArray();
+        }
+
         internal static PackageCollectionRecord[] ParseRows(ReadOnlySpan<byte> json)
         {
             if (json.IsEmpty)

@@ -26,6 +26,14 @@ namespace DaprStats
             "values ($1, $2, $3, $4) " +
             UpsertBuilder.BuildOnConflict(KeyColumns, UpdateColumns);
 
+        // The latest collection week before the one $2 falls in, so a re-run
+        // within a week compares against last week rather than against itself.
+        internal static readonly string PreviousWeekTotalSql =
+            $"select sum(download_count)::bigint from {TableName} " +
+            "where package_name = $1 and collection_week = " +
+            $"(select max(collection_week) from {TableName} " +
+            "where package_name = $1 and collection_week < date_trunc('week', $2::timestamp)::date)";
+
         public override async Task<bool> RunAsync(WorkflowActivityContext context, NuGetPackageInput input)
         {
             var serviceIndex = await _httpClient.GetByteArrayAsync(NuGetSearch.ServiceIndexUrl);
@@ -43,11 +51,25 @@ namespace DaprStats
                 ?? throw new InvalidOperationException(
                     $"No NuGet search endpoint returned {input.PackageName} ({string.Join(", ", endpoints.Select(e => e.Host))})");
 
+            var collectionDate = DateTime.UtcNow;
+
+            // Checked on dry runs too, so a dry run shows whether a real run would
+            // store stale counts. Not storing leaves the package missing, so the
+            // workflow retries it after the backoff in case a host has caught up.
+            var previousWeekTotal = NuGetSearch.ParsePreviousWeekTotal(
+                await _output.QueryAsync(PreviousWeekTotalSql, [package.PackageId, collectionDate]));
+            if (NuGetSearch.IsStale(package.TotalDownloads, previousWeekTotal))
+            {
+                // NUGET_STALE is grepped by run-workflow.yaml to fail the job.
+                Console.WriteLine($"NUGET_STALE {package.PackageId}: freshest host total {package.TotalDownloads} is not above the previous week's {previousWeekTotal}; not storing");
+                return true;
+            }
+
             foreach (var version in package.Versions)
             {
                 var nugetPackageVersionData = new NuGetPackageVersionData
                 (
-                    CollectionDate: DateTime.UtcNow,
+                    CollectionDate: collectionDate,
                     PackageName: package.PackageId,
                     PackageVersion: version.Version,
                     Downloads: version.Downloads

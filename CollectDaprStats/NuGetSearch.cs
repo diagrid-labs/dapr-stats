@@ -63,5 +63,42 @@ namespace DaprStats
         /// </summary>
         public static SearchResult? PickFreshest(IEnumerable<SearchResult?> results) =>
             results.OfType<SearchResult>().MaxBy(r => r.TotalDownloads);
+
+        /// <summary>
+        /// True when even the freshest host has not moved past the total stored
+        /// for an earlier week. On 2026-10-12 both hosts still served the exact
+        /// per-version counts of a week before, to every client, while the
+        /// nuget.org gallery was well ahead; PickFreshest alone stored a week
+        /// of zero downloads.
+        /// No earlier week (null or 0) means there is nothing to compare with.
+        /// </summary>
+        public static bool IsStale(long freshestTotal, long? previousWeekTotal) =>
+            previousWeekTotal > 0 && freshestTotal <= previousWeekTotal;
+
+        /// <summary>
+        /// The total stored for the most recent earlier collection week, from a
+        /// single-cell query result; null when there is no earlier week.
+        /// </summary>
+        public static long? ParsePreviousWeekTotal(byte[] queryJson)
+        {
+            if (queryJson.Length == 0)
+            {
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(queryJson);
+            if (doc.RootElement.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            var cell = doc.RootElement[0][0];
+            return cell.ValueKind switch
+            {
+                JsonValueKind.Null => null,
+                JsonValueKind.String => long.Parse(cell.GetString()!),
+                _ => cell.GetInt64(),
+            };
+        }
     }
 }

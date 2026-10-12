@@ -94,4 +94,44 @@ public class NuGetSearchTests
     {
         Assert.Null(NuGetSearch.PickFreshest([null, null]));
     }
+
+    [Fact]
+    public void IsStale_FreshestTotalEqualsPreviousWeek_IsStale()
+    {
+        // Measured 2026-10-12: the freshest host served Dapr.Client =
+        // 33,007,350, the exact total stored the week before.
+        Assert.True(NuGetSearch.IsStale(33_007_350, 33_007_350));
+    }
+
+    [Fact]
+    public void IsStale_FreshestTotalBelowPreviousWeek_IsStale()
+    {
+        Assert.True(NuGetSearch.IsStale(32_762_292, 33_007_350));
+    }
+
+    [Fact]
+    public void IsStale_FreshestTotalAbovePreviousWeek_IsNotStale()
+    {
+        Assert.False(NuGetSearch.IsStale(33_392_573, 33_007_350));
+    }
+
+    [Fact]
+    public void IsStale_NoPreviousWeek_IsNotStale()
+    {
+        // A newly added package has nothing to compare with and must be stored.
+        Assert.False(NuGetSearch.IsStale(4_876, null));
+        Assert.False(NuGetSearch.IsStale(4_876, 0));
+    }
+
+    [Theory]
+    [InlineData("""[[33007350]]""", 33_007_350L)]
+    [InlineData("""[["33007350"]]""", 33_007_350L)]
+    [InlineData("""[[null]]""", null)]
+    [InlineData("""[]""", null)]
+    [InlineData("", null)]
+    public void ParsePreviousWeekTotal_ReadsTheSingleCell(string json, long? expected)
+    {
+        // sum() over no rows is a single null cell, not an empty result.
+        Assert.Equal(expected, NuGetSearch.ParsePreviousWeekTotal(Utf8(json)));
+    }
 }
